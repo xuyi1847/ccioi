@@ -1,0 +1,7 @@
+{
+  "name": "CCIOI.com",
+  "description": "A comprehensive AI portal featuring advanced video generation, voice synthesis, image creation, intelligent chat, and text analysis tools.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
