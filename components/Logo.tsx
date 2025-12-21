@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 
 interface LogoProps {
@@ -24,8 +25,8 @@ const Logo: React.FC<LogoProps> = ({ size = 'sm', autoAnimate = false, className
   // Size classes
   // Reduced tracking and gap significantly
   const containerClass = size === 'lg' 
-    ? "text-7xl md:text-8xl tracking-tighter gap-0" 
-    : "text-xl tracking-tight gap-0";
+    ? "text-5xl md:text-8xl tracking-tighter gap-0" 
+    : "text-lg md:text-xl tracking-tight gap-0";
   
   const bracketColor = active ? "text-app-accent" : "text-app-text";
   const innerColor = active ? "text-app-text" : "text-app-text";

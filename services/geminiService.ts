@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality, Type } from "@google/genai";
+import { GoogleGenAI, Modality, Type, GenerateContentResponse } from "@google/genai";
 import { decodeBase64 } from "./audioUtils";
 
 // --- Types ---
@@ -31,8 +31,10 @@ export const streamChat = async (
   const result = await chat.sendMessageStream({ message });
   
   for await (const chunk of result) {
-    if (chunk.text) {
-      onChunk(chunk.text);
+    // Fix: Cast the chunk to GenerateContentResponse and use the .text property as per guidelines
+    const c = chunk as GenerateContentResponse;
+    if (c.text) {
+      onChunk(c.text);
     }
   }
 };
@@ -90,7 +92,8 @@ export const generateVideo = async (
   
   // 3. Polling
   while (!operation.done) {
-    await new Promise(resolve => setTimeout(resolve, 5000)); // Poll every 5s
+    // Fix: Polling interval updated to 10s to match recommended guidelines
+    await new Promise(resolve => setTimeout(resolve, 10000));
     operation = await ai.operations.getVideosOperation({ operation: operation });
   }
 
@@ -147,5 +150,6 @@ export const analyzeText = async (text: string, type: 'SUMMARY' | 'SENTIMENT' | 
     contents: prompt,
   });
 
+  // Fix: Directly accessing .text property as per guidelines
   return response.text || "No analysis generated.";
 };

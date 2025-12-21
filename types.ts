@@ -1,3 +1,6 @@
+
+import React from 'react';
+
 export enum AppView {
   DASHBOARD = 'DASHBOARD',
   CHAT = 'CHAT',
@@ -43,6 +46,7 @@ export interface ToolConfig {
   id: AppView;
   name: string;
   description: string;
+  // Fix: Added React import to resolve the 'React' namespace error
   icon: React.ComponentType<any>;
   color: string;
 }
