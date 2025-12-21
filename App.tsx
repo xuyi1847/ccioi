@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   MessageSquare, 
@@ -7,7 +8,9 @@ import {
   FileText, 
   LayoutDashboard, 
   Menu,
-  X
+  X,
+  Play,
+  Sparkles
 } from 'lucide-react';
 import { AppView, ToolConfig } from './types';
 import ChatTool from './components/ChatTool';
@@ -38,6 +41,11 @@ const AppContent: React.FC = () => {
     { id: AppView.TEXT_ANALYSIS, name: t('nav.text'), description: t('nav.text.desc'), icon: FileText, color: 'text-emerald-400' },
   ];
 
+  const demoVideos = [
+    { id: 1, url: 'https://yisvideo.oss-cn-shanghai.aliyuncs.com/videos/ceshi1.mp4', label: 'Cinematic Portrait' },
+    { id: 2, url: 'https://yisvideo.oss-cn-shanghai.aliyuncs.com/videos/ceshi2.mp4', label: 'AI Motion Concept' }
+  ];
+
   // Handle Intro Animation
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -54,9 +62,10 @@ const AppContent: React.FC = () => {
       case AppView.AUDIO: return <AudioTool />;
       case AppView.TEXT_ANALYSIS: return <TextTool />;
       default: return (
-        <div className="flex flex-col items-center justify-center min-h-[80vh] gap-12">
-          <div className="text-center space-y-8 animate-fade-in-up">
-             <h1 className="text-3xl md:text-5xl font-bold text-app-text">
+        <div className="flex flex-col items-center gap-16 py-8">
+          {/* Welcome Header */}
+          <div className="text-center space-y-6 animate-fade-in-up">
+             <h1 className="text-4xl md:text-6xl font-bold text-app-text tracking-tight">
                {t('app.welcome')} <span className="text-app-accent">CCIOI.com</span>
              </h1>
              <p className="text-app-subtext max-w-2xl mx-auto text-lg leading-relaxed">
@@ -64,21 +73,73 @@ const AppContent: React.FC = () => {
              </p>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl px-4">
-            {tools.map((tool) => (
-              <button
-                key={tool.id}
-                onClick={() => setCurrentView(tool.id)}
-                className="group bg-app-surface/50 hover:bg-app-surface border border-app-border p-6 rounded-2xl transition-all hover:scale-105 hover:border-app-subtext/30 text-left relative overflow-hidden"
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-app-accent/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                <div className={`w-12 h-12 rounded-xl bg-app-base flex items-center justify-center mb-4 ${tool.color} group-hover:bg-app-base/80 transition-colors relative z-10`}>
-                  <tool.icon size={24} />
-                </div>
-                <h3 className="text-xl font-semibold text-app-text mb-2 relative z-10">{tool.name}</h3>
-                <p className="text-app-subtext text-sm relative z-10">{tool.description}</p>
-              </button>
-            ))}
+          {/* Tools Grid */}
+          <div className="w-full max-w-6xl px-4">
+            <h2 className="text-sm font-bold text-app-subtext uppercase tracking-[0.3em] mb-8 text-center">{t('app.modules')}</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              {tools.map((tool) => (
+                <button
+                  key={tool.id}
+                  onClick={() => setCurrentView(tool.id)}
+                  className="group bg-app-surface/40 hover:bg-app-surface border border-app-border p-6 rounded-3xl transition-all hover:-translate-y-1 hover:border-app-accent/30 text-center relative overflow-hidden backdrop-blur-sm"
+                >
+                  <div className={`w-12 h-12 rounded-2xl bg-app-base flex items-center justify-center mx-auto mb-4 ${tool.color} group-hover:scale-110 transition-transform`}>
+                    <tool.icon size={24} />
+                  </div>
+                  <h3 className="text-lg font-bold text-app-text mb-1">{tool.name}</h3>
+                  <p className="text-app-subtext text-xs line-clamp-1">{tool.description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Showcase Section */}
+          <div className="w-full max-w-6xl px-4 pb-12">
+            <div className="flex items-center justify-between mb-8">
+               <h2 className="text-xl font-bold text-app-text flex items-center gap-3">
+                 <Sparkles className="text-app-accent w-6 h-6" />
+                 AI Studio Showcase
+               </h2>
+               <div className="h-[1px] flex-1 bg-gradient-to-r from-app-border to-transparent ml-6" />
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+               {demoVideos.map((video) => (
+                 <div key={video.id} className="relative group aspect-[9/16] bg-app-surface rounded-3xl border border-app-border overflow-hidden shadow-2xl transition-all hover:scale-[1.02] hover:border-app-accent/50">
+                    <video 
+                      src={video.url} 
+                      className="w-full h-full object-cover"
+                      autoPlay 
+                      muted 
+                      loop 
+                      playsInline
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-4">
+                       <span className="text-[10px] text-app-accent font-mono uppercase tracking-widest mb-1">Generated by Veo</span>
+                       <p className="text-white text-sm font-bold">{video.label}</p>
+                    </div>
+                    {/* Glassy Tag */}
+                    <div className="absolute top-4 left-4 px-3 py-1 bg-black/30 backdrop-blur-md rounded-full border border-white/10 flex items-center gap-2">
+                       <Play size={10} className="fill-white text-white" />
+                       <span className="text-[10px] font-bold text-white uppercase tracking-tighter">Demo</span>
+                    </div>
+                 </div>
+               ))}
+               
+               {/* Placeholder for more cards */}
+               <div className="hidden md:flex flex-col items-center justify-center aspect-[9/16] bg-app-surface/20 border-2 border-dashed border-app-border rounded-3xl text-app-subtext gap-3 p-6 text-center">
+                  <div className="w-12 h-12 rounded-full border border-app-border flex items-center justify-center">
+                    <Sparkles size={20} className="opacity-20" />
+                  </div>
+                  <p className="text-xs">Your creation could be here. Start generating today.</p>
+               </div>
+               <div className="hidden md:flex flex-col items-center justify-center aspect-[9/16] bg-app-surface/20 border-2 border-dashed border-app-border rounded-3xl text-app-subtext gap-3 p-6 text-center">
+                  <div className="w-12 h-12 rounded-full border border-app-border flex items-center justify-center">
+                    <Video size={20} className="opacity-20" />
+                  </div>
+                  <p className="text-xs text-balance">High-fidelity 9:16 portrait video production.</p>
+               </div>
+            </div>
           </div>
         </div>
       );
@@ -139,7 +200,7 @@ const AppContent: React.FC = () => {
 
       {/* Sidebar */}
       <aside className={`
-        fixed lg:static inset-y-0 left-0 z-30 w-64 bg-app-surface border-r border-app-border transform transition-transform duration-300 ease-in-out
+        fixed lg:static inset-y-0 left-0 z-50 w-64 bg-app-surface border-r border-app-border transform transition-transform duration-300 ease-in-out
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         <div className="h-20 flex items-center px-6 border-b border-app-border">
@@ -187,22 +248,24 @@ const AppContent: React.FC = () => {
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
         {/* Mobile Header */}
-        <header className="lg:hidden p-4 border-b border-app-border flex items-center justify-between bg-app-surface/80 backdrop-blur-md z-10">
+        <header className="lg:hidden p-3 border-b border-app-border flex items-center justify-between bg-app-surface/90 backdrop-blur-md z-40 sticky top-0 shrink-0">
           <Logo size="sm" />
-          <div className="flex items-center gap-4">
-            <UserMenu />
-            <button onClick={() => setIsSidebarOpen(true)} className="text-app-subtext">
-              <Menu size={24} />
+          <div className="flex items-center gap-1 sm:gap-2">
+            <LanguageSelector />
+            <ThemeSelector />
+            <UserMenu compact={true} />
+            <button 
+              onClick={() => setIsSidebarOpen(true)} 
+              className="p-2 text-app-subtext hover:text-app-text transition-colors"
+            >
+              <Menu size={20} />
             </button>
           </div>
         </header>
 
-        {/* Top Right Controls - Absolute positioned */}
-        <div className="absolute top-4 right-4 lg:top-6 lg:right-8 z-40 flex items-center gap-4">
-           {/* Only show UserMenu here on desktop to avoid dupes */}
-           <div className="hidden lg:block">
-              <UserMenu />
-           </div>
+        {/* Desktop Top Right Controls - Hidden on Mobile */}
+        <div className="hidden lg:flex absolute top-6 right-8 z-40 items-center gap-4">
+           <UserMenu />
            <LanguageSelector />
            <ThemeSelector />
         </div>
@@ -215,7 +278,7 @@ const AppContent: React.FC = () => {
               <div className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] bg-app-surface-hover/20 rounded-full blur-[100px]" />
            </div>
 
-           <div className="relative z-10 max-w-7xl mx-auto h-full pt-8 lg:pt-0">
+           <div className="relative z-10 max-w-7xl mx-auto h-full lg:pt-0">
              {renderContent()}
            </div>
         </div>

@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { User as UserIcon, LogOut, CreditCard, ChevronDown, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -5,7 +6,11 @@ import { useLanguage } from '../context/LanguageContext';
 import AuthModal from './AuthModal';
 import PaymentModal from './PaymentModal';
 
-const UserMenu: React.FC = () => {
+interface UserMenuProps {
+  compact?: boolean;
+}
+
+const UserMenu: React.FC<UserMenuProps> = ({ compact = false }) => {
   const { user, logout } = useAuth();
   const { t } = useLanguage();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -29,10 +34,12 @@ const UserMenu: React.FC = () => {
       <>
         <button
           onClick={() => setShowAuthModal(true)}
-          className="bg-app-accent hover:bg-app-accent-hover text-white px-5 py-2 rounded-full text-sm font-medium transition-all shadow-lg shadow-app-accent/20 flex items-center gap-2"
+          className={`bg-app-accent hover:bg-app-accent-hover text-white rounded-full text-sm font-medium transition-all shadow-lg shadow-app-accent/20 flex items-center justify-center gap-2 ${
+            compact ? 'p-2' : 'px-4 py-2'
+          }`}
         >
-          <UserIcon size={16} />
-          <span>{t('auth.login')}</span>
+          <UserIcon size={compact ? 18 : 16} />
+          {!compact && <span>{t('auth.login')}</span>}
         </button>
         <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
       </>
@@ -44,15 +51,19 @@ const UserMenu: React.FC = () => {
       <div className="relative" ref={menuRef}>
         <button
           onClick={() => setIsMenuOpen(!isMenuOpen)}
-          className="flex items-center gap-3 p-1 pl-3 pr-2 rounded-full border border-app-border bg-app-surface/50 hover:bg-app-surface hover:border-app-subtext/50 transition-all group"
+          className={`flex items-center rounded-full border border-app-border bg-app-surface/50 hover:bg-app-surface hover:border-app-subtext/50 transition-all group ${
+            compact ? 'p-1' : 'p-1 pl-3 pr-2 gap-3'
+          }`}
         >
-          <div className="text-right hidden sm:block">
-            <div className="text-xs font-bold text-app-text">{user.name}</div>
-            <div className="text-[10px] text-app-accent font-medium flex items-center justify-end gap-1">
-              {user.balance} {t('pay.credits')}
+          {!compact && (
+            <div className="text-right hidden sm:block">
+              <div className="text-xs font-bold text-app-text">{user.name}</div>
+              <div className="text-[10px] text-app-accent font-medium flex items-center justify-end gap-1">
+                {user.balance} {t('pay.credits')}
+              </div>
             </div>
-          </div>
-          <div className="relative">
+          )}
+          <div className="relative shrink-0">
             <img 
               src={user.avatar || `https://ui-avatars.com/api/?name=${user.name}`} 
               alt={user.name} 
@@ -60,7 +71,7 @@ const UserMenu: React.FC = () => {
             />
             <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-app-surface"></div>
           </div>
-          <ChevronDown size={14} className="text-app-subtext group-hover:text-app-text" />
+          {!compact && <ChevronDown size={14} className="text-app-subtext group-hover:text-app-text" />}
         </button>
 
         {isMenuOpen && (

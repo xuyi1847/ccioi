@@ -22,8 +22,9 @@ export const streamChat = async (
   onChunk: (text: string) => void
 ) => {
   const ai = createAIClient();
+  // Using gemini-3-flash-preview for Basic Text Tasks (chat/Q&A)
   const chat = ai.chats.create({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3-flash-preview',
     history: history,
   });
 
@@ -39,7 +40,7 @@ export const streamChat = async (
 // --- Image Generation ---
 export const generateImage = async (prompt: string, aspectRatio: string = "1:1"): Promise<string> => {
   const ai = createAIClient();
-  // Using flash-image for speed and efficiency as per prompt guidelines for general use
+  // Using gemini-2.5-flash-image for general image generation tasks
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash-image',
     contents: {
@@ -71,12 +72,12 @@ export const generateVideo = async (
     // Proceed without checking return value, as per guidelines to assume success and mitigate race condition.
   }
 
-  // 2. Re-init client to ensure key is active
-  const ai = createAIClient();
+  // 2. Re-init client right before the API call to ensure key is active
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   onProgress("Initializing video generation...");
   let operation = await ai.models.generateVideos({
-    model: 'veo-3.1-fast-generate-preview', // Fast preview for better UX
+    model: 'veo-3.1-fast-generate-preview', // General Video Generation Tasks
     prompt: prompt,
     config: {
       numberOfVideos: 1,
@@ -96,13 +97,14 @@ export const generateVideo = async (
   const videoUri = operation.response?.generatedVideos?.[0]?.video?.uri;
   if (!videoUri) throw new Error("Video generation failed to return a URI.");
 
-  // 4. Return authenticated URL
+  // 4. Return authenticated URL with API key
   return `${videoUri}&key=${process.env.API_KEY}`;
 };
 
 // --- Text To Speech ---
 export const generateSpeech = async (text: string, voiceName: string): Promise<Uint8Array> => {
   const ai = createAIClient();
+  // Using gemini-2.5-flash-preview-tts for Text-to-speech tasks
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash-preview-tts",
     contents: [{ parts: [{ text }] }],
@@ -139,8 +141,9 @@ export const analyzeText = async (text: string, type: 'SUMMARY' | 'SENTIMENT' | 
       break;
   }
 
+  // Using gemini-3-flash-preview for Basic Text Tasks (summarization/analysis)
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3-flash-preview',
     contents: prompt,
   });
 
