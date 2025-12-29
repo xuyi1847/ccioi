@@ -340,7 +340,7 @@ class UserOut(BaseModel):
 # =========================================================
 # 注册（必须邀请码）
 # =========================================================
-@app.post("/api/register", response_model=UserOut)
+@app.post("/register", response_model=UserOut)
 async def register(req: RegisterReq):
     email = req.email.lower().strip()
     name = req.name.strip()
@@ -374,7 +374,7 @@ async def register(req: RegisterReq):
 # =========================================================
 # 登录
 # =========================================================
-@app.post("/api/login", response_model=UserOut)
+@app.post("/login", response_model=UserOut)
 async def login(req: LoginReq):
     email = req.email.lower().strip()
 
