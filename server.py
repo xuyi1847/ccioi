@@ -2,12 +2,27 @@ import json
 import time
 import uuid
 from typing import Dict, Optional, Tuple
-
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 import os
 import oss2
 from fastapi import UploadFile, File, HTTPException
 app = FastAPI()
+
+# =========================================================
+# CORS (Frontend Upload Support)
+# =========================================================
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://115.191.1.112:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # =========================================================
 # OSS CONFIG (⚠️ 明文写入，仅按你的要求)
 # =========================================================
