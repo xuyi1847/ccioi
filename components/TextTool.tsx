@@ -1,17 +1,24 @@
+
 import React, { useState } from 'react';
-import { FileText, Loader2, List, Activity, Tag } from 'lucide-react';
+import { FileText, Loader2, List, Activity, Tag, Lock } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { analyzeText } from '../services/geminiService';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 
 const TextTool: React.FC = () => {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [text, setText] = useState('');
   const [analysisType, setAnalysisType] = useState<'SUMMARY' | 'SENTIMENT' | 'KEYWORDS'>('SUMMARY');
   const [result, setResult] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const handleAnalyze = async () => {
+    if (!user) {
+      alert("Please login to analyze text.");
+      return;
+    }
     if (!text) return;
     setIsAnalyzing(true);
     try {
@@ -67,11 +74,19 @@ const TextTool: React.FC = () => {
           <button
             onClick={handleAnalyze}
             disabled={isAnalyzing || !text}
-            className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-semibold text-white shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2 transition-all"
+            className={`w-full py-3 rounded-xl font-semibold shadow-lg flex items-center justify-center gap-2 transition-all ${
+              !user 
+              ? 'bg-app-surface text-app-subtext border border-app-border cursor-not-allowed' 
+              : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-900/30'
+            }`}
           >
             {isAnalyzing ? (
               <>
                 <Loader2 className="animate-spin w-5 h-5" /> {t('pay.processing')}
+              </>
+            ) : !user ? (
+              <>
+                <Lock className="w-5 h-5" /> Login Required
               </>
             ) : (
               <>

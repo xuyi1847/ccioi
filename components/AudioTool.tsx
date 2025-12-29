@@ -1,19 +1,26 @@
+
 import React, { useState } from 'react';
-import { Mic, Loader2, Volume2, PlayCircle } from 'lucide-react';
+import { Mic, Loader2, Volume2, PlayCircle, Lock } from 'lucide-react';
 import { generateSpeech } from '../services/geminiService';
 import { decodeAudioData, playAudioBuffer } from '../services/audioUtils';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 
 const VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'];
 
 const AudioTool: React.FC = () => {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [text, setText] = useState('');
   const [selectedVoice, setSelectedVoice] = useState('Puck');
   const [isGenerating, setIsGenerating] = useState(false);
   const [audioBuffer, setAudioBuffer] = useState<AudioBuffer | null>(null);
 
   const handleGenerate = async () => {
+    if (!user) {
+      alert("Please login to generate speech.");
+      return;
+    }
     if (!text) return;
     setIsGenerating(true);
     setAudioBuffer(null);
@@ -78,11 +85,19 @@ const AudioTool: React.FC = () => {
             <button
               onClick={handleGenerate}
               disabled={isGenerating || !text}
-              className="flex-1 py-3 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-semibold text-white shadow-lg shadow-rose-900/30 flex items-center justify-center gap-2 transition-all"
+              className={`flex-1 py-3 rounded-xl font-semibold shadow-lg flex items-center justify-center gap-2 transition-all ${
+                !user 
+                ? 'bg-app-surface text-app-subtext border border-app-border cursor-not-allowed' 
+                : 'bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white shadow-rose-900/30'
+              }`}
             >
               {isGenerating ? (
                 <>
                   <Loader2 className="animate-spin w-5 h-5" /> {t('pay.processing')}
+                </>
+              ) : !user ? (
+                <>
+                  <Lock className="w-5 h-5" /> Login Required
                 </>
               ) : (
                 <>
@@ -103,7 +118,6 @@ const AudioTool: React.FC = () => {
         </div>
       </div>
       
-      {/* Visualizer Placeholder */}
       <div className="h-24 bg-app-base border border-app-border rounded-xl flex items-center justify-center overflow-hidden relative">
          <div className={`flex items-center gap-1 ${isGenerating || audioBuffer ? 'opacity-100' : 'opacity-20'}`}>
             {[...Array(20)].map((_, i) => (

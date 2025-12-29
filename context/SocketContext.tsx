@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 
 interface SocketContextType {
@@ -18,7 +19,6 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const reconnectTimeoutRef = useRef<number | null>(null);
 
   const connect = useCallback(() => {
-    // If already connecting or connected, don't start a new one
     if (socketRef.current?.readyState === WebSocket.CONNECTING || 
         socketRef.current?.readyState === WebSocket.OPEN) return;
 
@@ -28,7 +28,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       
       ws.onopen = () => {
         setIsConnected(true);
-        console.log('CCIOI Bridge: Connected to FastAPI Backend');
+        console.log('CCIOI Bridge: Connected');
       };
 
       ws.onmessage = (event) => {
@@ -38,9 +38,8 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ws.onclose = (event) => {
         setIsConnected(false);
         socketRef.current = null;
-        console.log(`CCIOI Bridge: Socket closed. Code: ${event.code}, Reason: ${event.reason || 'None'}`);
+        console.log(`CCIOI Bridge: Socket closed. Code: ${event.code}`);
         
-        // Auto-reconnect after 5 seconds
         if (!reconnectTimeoutRef.current) {
           reconnectTimeoutRef.current = window.setTimeout(() => {
             reconnectTimeoutRef.current = null;
@@ -51,7 +50,6 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       ws.onerror = (error) => {
         console.error('CCIOI Bridge: Connection error detected.');
-        console.dir(error); 
       };
 
       socketRef.current = ws;
@@ -71,10 +69,9 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const sendCommand = (command: any) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify(command));
-      console.log('CCIOI Bridge: Payload dispatched to cluster');
     } else {
       console.error('CCIOI Bridge: Cannot send - Socket is not ready.');
-      alert(`The CCIOI Bridge server at ${serverUrl} is offline.`);
+      alert(`The CCIOI Bridge server is currently offline.`);
     }
   };
 

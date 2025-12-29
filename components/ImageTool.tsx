@@ -1,16 +1,23 @@
+
 import React, { useState } from 'react';
-import { Image as ImageIcon, Loader2, Download, RefreshCw } from 'lucide-react';
+import { Image as ImageIcon, Loader2, Download, RefreshCw, Lock } from 'lucide-react';
 import { generateImage } from '../services/geminiService';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 
 const ImageTool: React.FC = () => {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [prompt, setPrompt] = useState('');
   const [aspectRatio, setAspectRatio] = useState('1:1');
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
   const handleGenerate = async () => {
+    if (!user) {
+      alert("Please login to generate images.");
+      return;
+    }
     if (!prompt) return;
     setIsGenerating(true);
     setResultImage(null);
@@ -68,11 +75,19 @@ const ImageTool: React.FC = () => {
             <button
               onClick={handleGenerate}
               disabled={isGenerating || !prompt}
-              className="w-full py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-semibold text-white shadow-lg shadow-purple-900/30 flex items-center justify-center gap-2 transition-all"
+              className={`w-full py-3 rounded-xl font-semibold shadow-lg flex items-center justify-center gap-2 transition-all ${
+                !user 
+                ? 'bg-app-surface text-app-subtext border border-app-border cursor-not-allowed' 
+                : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-purple-900/30'
+              }`}
             >
               {isGenerating ? (
                 <>
                   <Loader2 className="animate-spin w-5 h-5" /> {t('pay.processing')}
+                </>
+              ) : !user ? (
+                <>
+                  <Lock className="w-5 h-5" /> Login Required
                 </>
               ) : (
                 <>

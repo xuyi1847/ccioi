@@ -1,3 +1,4 @@
+
 import { User } from '../types';
 
 const API_BASE = 'https://www.ccioi.com/api';
@@ -17,14 +18,19 @@ export const mockBackend = {
     
     const user = await response.json();
     localStorage.setItem('ccioi_current_user_id', user.id);
+    localStorage.setItem('ccioi_current_user_data', JSON.stringify(user));
     return user;
   },
 
-  async register(email: string, name: string): Promise<User> {
+  async register(email: string, name: string, inviteCode: string): Promise<User> {
     const response = await fetch(`${API_BASE}/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, name })
+      body: JSON.stringify({ 
+        email, 
+        name, 
+        invite_code: inviteCode 
+      })
     });
     
     if (!response.ok) {
@@ -34,17 +40,24 @@ export const mockBackend = {
 
     const user = await response.json();
     localStorage.setItem('ccioi_current_user_id', user.id);
+    localStorage.setItem('ccioi_current_user_data', JSON.stringify(user));
     return user;
   },
 
   async logout(): Promise<void> {
     localStorage.removeItem('ccioi_current_user_id');
+    localStorage.removeItem('ccioi_current_user_data');
   },
 
   async getCurrentUser(): Promise<User | null> {
     const id = localStorage.getItem('ccioi_current_user_id');
-    if (!id) return null;
-    return null; // Force login for demo purposes to sync with Python state
+    const data = localStorage.getItem('ccioi_current_user_data');
+    if (!id || !data) return null;
+    try {
+      return JSON.parse(data);
+    } catch {
+      return null;
+    }
   },
 
   async addBalance(amount: number): Promise<number> {

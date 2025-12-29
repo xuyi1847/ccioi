@@ -30,7 +30,6 @@ OSS_ACCESS_KEY_ID = os.getenv("OSS_ACCESS_KEY_ID")
 OSS_ACCESS_KEY_SECRET = os.getenv("OSS_ACCESS_KEY_SECRET")
 OSS_BUCKET = os.getenv("OSS_BUCKET", "yisvideo")
 OSS_ENDPOINT = os.getenv("OSS_ENDPOINT", "oss-cn-shanghai.aliyuncs.com")
-
 auth = oss2.Auth(OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET)
 bucket = oss2.Bucket(
     auth,
@@ -277,3 +276,110 @@ async def upload_to_oss(file: UploadFile = File(...)):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, EmailStr
+import uuid
+import time
+# =========================================================
+# 邀请码配置（后面你可以改成 DB / Redis / 管理后台）
+# =========================================================
+VALID_INVITE_CODES = {
+    "CCIOI-ALPHA",
+    "CCIOI-BETA",
+    "INTERNAL-2025",
+}
+
+# =========================================================
+# 内存用户表（占位用）
+# =========================================================
+users_by_email = {}
+users_by_id = {}
+import uuid
+import time
+
+users_by_email = {}
+users_by_id = {}
+
+# =========================================================
+# 预置 10 个用户（开发 / 内测用）
+# =========================================================
+for i in range(1, 11):
+    user_id = str(uuid.uuid4())
+    email = f"user{i}@ccioi.com"
+
+    user = {
+        "id": user_id,
+        "email": email,
+        "name": f"Test User {i}",
+        "balance": 100.0,           # 给点初始余额，方便你后面计费
+        "created_at": time.time(),
+        "invite_code": "SYSTEM_PRESET",
+    }
+
+    users_by_email[email] = user
+    users_by_id[user_id] = user
+# =========================================================
+# Models
+# =========================================================
+class RegisterReq(BaseModel):
+    email: EmailStr
+    name: str
+    invite_code: str
+
+class LoginReq(BaseModel):
+    email: EmailStr
+
+class UserOut(BaseModel):
+    id: str
+    email: EmailStr
+    name: str
+    balance: float = 0.0
+
+
+# =========================================================
+# 注册（必须邀请码）
+# =========================================================
+@app.post("/api/register", response_model=UserOut)
+async def register(req: RegisterReq):
+    email = req.email.lower().strip()
+    name = req.name.strip()
+    invite_code = req.invite_code.strip()
+
+    # 1️⃣ 校验邀请码
+    if invite_code not in VALID_INVITE_CODES:
+        raise HTTPException(status_code=403, detail="Invalid invite code")
+
+    # 2️⃣ 校验是否已注册
+    if email in users_by_email:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    # 3️⃣ 创建用户
+    user_id = str(uuid.uuid4())
+    user = {
+        "id": user_id,
+        "email": email,
+        "name": name,
+        "balance": 0.0,
+        "created_at": time.time(),
+        "invite_code": invite_code,
+    }
+
+    users_by_email[email] = user
+    users_by_id[user_id] = user
+
+    return user
+
+
+# =========================================================
+# 登录
+# =========================================================
+@app.post("/api/login", response_model=UserOut)
+async def login(req: LoginReq):
+    email = req.email.lower().strip()
+
+    user = users_by_email.get(email)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return user

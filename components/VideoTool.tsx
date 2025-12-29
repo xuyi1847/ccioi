@@ -1,8 +1,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Video, Play, Settings, ImageIcon, Trash2, Cpu, Link, Globe, Wifi, WifiOff, FileCode, CheckCircle2, Loader2, Download, Terminal, ChevronDown, ChevronUp, Activity } from 'lucide-react';
+import { Video, Play, Settings, ImageIcon, Trash2, Cpu, Link, Globe, Wifi, WifiOff, FileCode, CheckCircle2, Loader2, Download, Terminal, ChevronDown, ChevronUp, Activity, Lock } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useSocket } from '../context/SocketContext';
+import { useAuth } from '../context/AuthContext';
 import { HistoryRecord } from '../types';
 import { uploadToOSS } from '../services/ossService';
 
@@ -25,6 +26,7 @@ interface TaskLog {
 const VideoTool: React.FC = () => {
   const { t } = useLanguage();
   const { isConnected, sendCommand, lastMessage, serverUrl, setServerUrl } = useSocket();
+  const { user } = useAuth();
   
   const [prompt, setPrompt] = useState('A futuristic landscape with flying vehicles and neon structures');
   const [configFile, setConfigFile] = useState(CONFIG_FILES[0]);
@@ -93,6 +95,10 @@ const VideoTool: React.FC = () => {
   }, [lastMessage]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!user) {
+      alert("Please login to upload images.");
+      return;
+    }
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
@@ -112,6 +118,10 @@ const VideoTool: React.FC = () => {
   };
 
   const handleDispatch = () => {
+    if (!user) {
+      alert("Please login to generate video.");
+      return;
+    }
     if (!isConnected) {
       alert("Socket server not connected.");
       return;
@@ -145,7 +155,6 @@ const VideoTool: React.FC = () => {
 
   return (
     <div className="h-full flex flex-col lg:flex-row gap-6 p-1 overflow-hidden">
-      {/* Parameters Sidebar */}
       <div className="w-full lg:w-[400px] flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-1 shrink-0">
         <div className="bg-app-surface/60 p-6 rounded-3xl border border-app-border shadow-xl backdrop-blur-md">
           <div className="flex items-center justify-between mb-6">
@@ -165,7 +174,7 @@ const VideoTool: React.FC = () => {
                 <input 
                   type="text" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)}
                   className="flex-1 bg-transparent text-xs text-app-text outline-none"
-                  placeholder="wss://www.ccioi.com/ws"
+                  placeholder="ws://www.ccioi.com/ws"
                 />
                 <Link size={12} className="text-app-subtext" />
               </div>
@@ -246,15 +255,22 @@ const VideoTool: React.FC = () => {
                 </div>
             </div>
 
-            <button onClick={handleDispatch} disabled={isGenerating || isUploading} className="w-full py-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 text-white rounded-2xl font-bold shadow-lg shadow-cyan-900/30 flex items-center justify-center gap-2 transition-all active:scale-[0.98] uppercase tracking-widest text-xs">
-              {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-current" />}
-              {isGenerating ? 'Processing...' : t('tool.video.generate')}
+            <button 
+              onClick={handleDispatch} 
+              disabled={isGenerating || isUploading} 
+              className={`w-full py-4 rounded-2xl font-bold shadow-lg flex items-center justify-center gap-2 transition-all active:scale-[0.98] uppercase tracking-widest text-xs ${
+                !user 
+                ? 'bg-app-surface text-app-subtext cursor-not-allowed border border-app-border' 
+                : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-cyan-900/30'
+              }`}
+            >
+              {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : !user ? <Lock className="w-4 h-4" /> : <Play className="w-4 h-4 fill-current" />}
+              {!user ? 'Login Required' : isGenerating ? 'Processing...' : t('tool.video.generate')}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Optimized Main Display Box */}
       <div className="flex-1 flex flex-col gap-6 overflow-hidden min-h-0">
         <div className="bg-app-surface/30 rounded-3xl border border-app-border flex-1 flex flex-col items-center justify-center relative overflow-hidden group/preview p-0 bg-black/40">
           
@@ -294,7 +310,6 @@ const VideoTool: React.FC = () => {
 
           {generatedVideoUrl ? (
             <div className="w-full h-full flex items-center justify-center animate-fade-in group relative bg-black">
-              {/* Maximize the display proportionally */}
               <video src={generatedVideoUrl} className="w-full h-full max-w-full max-h-full object-contain shadow-2xl" controls autoPlay loop playsInline />
               <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity flex gap-3 z-20">
                 <a href={generatedVideoUrl} download target="_blank" rel="noopener noreferrer" className="p-3 bg-black/80 hover:bg-app-accent rounded-full text-white backdrop-blur-md transition-all shadow-xl"><Download size={24} /></a>
@@ -323,7 +338,7 @@ const VideoTool: React.FC = () => {
         <div className="bg-app-accent/5 border border-app-accent/10 rounded-3xl p-6 flex items-center gap-6 backdrop-blur-sm shrink-0 border-app-border shadow-xl">
            <div className="w-14 h-14 bg-app-accent/20 rounded-2xl flex items-center justify-center text-app-accent shrink-0"><Globe size={28} /></div>
            <div className="min-w-0">
-             <p className="text-base font-bold text-app-text truncate">Cluster Dispatch Interface (Node: 115.191.1.112)</p>
+             <p className="text-base font-bold text-app-text truncate">Cluster Dispatch Interface (Node: www.ccioi.com)</p>
              <p className="text-xs text-app-subtext leading-relaxed mt-1 opacity-70">The remote GPU compute engine handles all heavy neural rendering. Real-time updates are streamed via secure WebSocket tunnels.</p>
            </div>
         </div>

@@ -3,7 +3,7 @@
  * Aliyun OSS Upload Service (via Proxy Backend)
  */
 
-const UPLOAD_ENDPOINT = 'https://www.ccioi.com/api/upload';
+const UPLOAD_ENDPOINT = 'https://www.ccioi.com/upload';
 
 /**
  * Uploads a file to Aliyun OSS via the backend proxy to handle CORS and auth.

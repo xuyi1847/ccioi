@@ -1,12 +1,15 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Loader2 } from 'lucide-react';
+import { Send, Bot, User, Loader2, Lock } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { streamChat } from '../services/geminiService';
 import { Message } from '../types';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 
 const ChatTool: React.FC = () => {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'welcome',
@@ -20,7 +23,6 @@ const ChatTool: React.FC = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Reset welcome message on language change if it's the only message
     if (messages.length === 1 && messages[0].id === 'welcome') {
       setMessages([{
         id: 'welcome',
@@ -39,6 +41,10 @@ const ChatTool: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) {
+      alert("Please login to chat.");
+      return;
+    }
     if (!input.trim() || isLoading) return;
 
     const userMsg: Message = {
@@ -56,12 +62,11 @@ const ChatTool: React.FC = () => {
     setMessages(prev => [...prev, {
       id: modelMsgId,
       role: 'model',
-      content: '', // Start empty
+      content: '', 
       timestamp: Date.now()
     }]);
 
     try {
-      // Prepare history for API
       const history = messages.map(m => ({
         role: m.role,
         parts: [{ text: m.content }]
@@ -123,17 +128,25 @@ const ChatTool: React.FC = () => {
       </div>
 
       <form onSubmit={handleSubmit} className="p-4 bg-app-surface border-t border-app-border">
-        <div className="flex gap-2">
+        <div className="flex gap-2 relative">
+          {!user && (
+            <div className="absolute inset-0 bg-app-surface/60 backdrop-blur-sm z-10 flex items-center justify-center rounded-xl cursor-not-allowed">
+              <span className="flex items-center gap-2 text-xs font-bold text-app-subtext">
+                <Lock size={12} /> Login to unlock conversation
+              </span>
+            </div>
+          )}
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={t('tool.chat.placeholder')}
+            disabled={!user}
+            placeholder={user ? t('tool.chat.placeholder') : 'Locked'}
             className="flex-1 bg-app-surface-hover border-transparent focus:border-app-accent focus:ring-0 rounded-xl px-4 py-3 text-app-text placeholder-app-subtext outline-none transition-all"
           />
           <button
             type="submit"
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || !input.trim() || !user}
             className="bg-app-accent hover:bg-app-accent-hover disabled:opacity-50 disabled:cursor-not-allowed text-white p-3 rounded-xl transition-all"
           >
             <Send size={20} />

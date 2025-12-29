@@ -6,7 +6,8 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string) => Promise<void>;
-  register: (email: string, name: string) => Promise<void>;
+  // Fix: Added inviteCode parameter to register signature
+  register: (email: string, name: string, inviteCode: string) => Promise<void>;
   logout: () => Promise<void>;
   recharge: (amount: number) => Promise<void>;
 }
@@ -37,8 +38,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(u);
   };
 
-  const register = async (email: string, name: string) => {
-    const u = await mockBackend.register(email, name);
+  // Fix: Added inviteCode parameter and passed it to mockBackend.register
+  const register = async (email: string, name: string, inviteCode: string) => {
+    const u = await mockBackend.register(email, name, inviteCode);
     setUser(u);
   };
 
