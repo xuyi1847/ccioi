@@ -183,7 +183,7 @@ const VideoTool: React.FC = () => {
               <label className="block text-xs font-bold text-app-subtext uppercase tracking-widest mb-2">{t('tool.video.prompt')}</label>
               <textarea
                 value={prompt} onChange={(e) => setPrompt(e.target.value)}
-                className="w-full bg-app-base border border-app-border rounded-xl p-3 text-app-text text-sm h-24 outline-none focus:border-cyan-500 transition-colors"
+                className="w-full bg-app-surface border border-app-border rounded-xl p-3 text-app-text text-sm h-24 outline-none focus:border-cyan-500 transition-colors"
                 placeholder="Describe the scene..."
               />
             </div>
@@ -285,12 +285,12 @@ const VideoTool: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Preview Area */}
-      <div className="flex-1 flex flex-col gap-6 overflow-hidden">
-        <div className="bg-app-surface/30 rounded-3xl border border-app-border flex-1 flex flex-col min-h-[400px] items-center justify-center relative overflow-hidden group/preview">
+      {/* Main Preview Area - Optimized for maximal proportional scaling */}
+      <div className="flex-1 flex flex-col gap-6 overflow-hidden h-full">
+        <div className="bg-app-surface/30 rounded-3xl border border-app-border flex-1 flex flex-col items-center justify-center relative overflow-hidden group/preview p-0">
           
           {isGenerating && (
-            <div className="absolute inset-0 z-20 bg-app-base/90 backdrop-blur-md flex flex-col animate-fade-in">
+            <div className="absolute inset-0 z-[60] bg-app-base/90 backdrop-blur-md flex flex-col animate-fade-in">
               {/* Progress Header */}
               <div className="p-8 flex flex-col items-center justify-center gap-4 text-center">
                 <div className="relative">
@@ -336,29 +336,29 @@ const VideoTool: React.FC = () => {
           )}
 
           {generatedVideoUrl ? (
-            <div className="w-full h-full flex items-center justify-center animate-fade-in group relative p-4">
+            <div className="w-full h-full flex items-center justify-center animate-fade-in group relative overflow-hidden bg-black/20">
               <video 
                 src={generatedVideoUrl} 
-                className="max-w-full max-h-full rounded-2xl shadow-2xl border border-white/5 object-contain" 
+                className="w-full h-full object-contain shadow-2xl transition-all duration-700" 
                 controls 
                 autoPlay 
                 loop
               />
-              <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+              <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2 z-20">
                 <a 
                   href={generatedVideoUrl} 
                   download 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="p-2.5 bg-black/60 hover:bg-black/80 rounded-full text-white backdrop-blur-md transition-all shadow-xl"
+                  className="p-3 bg-black/60 hover:bg-black/80 rounded-full text-white backdrop-blur-md transition-all shadow-xl"
                 >
-                  <Download size={20} />
+                  <Download size={24} />
                 </a>
                 <button 
                   onClick={() => setGeneratedVideoUrl(null)}
-                  className="p-2.5 bg-red-500/60 hover:bg-red-500/80 rounded-full text-white backdrop-blur-md transition-all shadow-xl"
+                  className="p-3 bg-red-500/60 hover:bg-red-500/80 rounded-full text-white backdrop-blur-md transition-all shadow-xl"
                 >
-                  <Trash2 size={20} />
+                  <Trash2 size={24} />
                 </button>
               </div>
             </div>

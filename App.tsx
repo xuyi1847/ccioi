@@ -258,28 +258,27 @@ const AppContent: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
-        {/* Mobile Header */}
-        <header className="lg:hidden p-3 border-b border-app-border flex items-center justify-between bg-app-surface/90 backdrop-blur-md z-50 sticky top-0 shrink-0">
-          <Logo size="sm" />
-          <div className="flex items-center gap-1">
-            <LanguageSelector />
-            <ThemeSelector />
-            <UserMenu compact={true} onOpenAuth={() => setIsAuthModalOpen(true)} onOpenPayment={() => setIsPaymentModalOpen(true)} />
+        {/* Header - Shared between mobile and desktop to prevent content obstruction */}
+        <header className="px-4 py-3 border-b border-app-border flex items-center justify-between bg-app-surface/90 backdrop-blur-md z-50 sticky top-0 shrink-0">
+          <div className="flex items-center gap-4 lg:hidden">
             <button 
               onClick={() => setIsSidebarOpen(true)} 
               className="p-2 text-app-subtext hover:text-app-text transition-colors"
             >
               <Menu size={20} />
             </button>
+            <Logo size="sm" />
+          </div>
+
+          {/* This empty div takes space on desktop where Logo is in Sidebar */}
+          <div className="hidden lg:block"></div>
+
+          <div className="flex items-center gap-3 md:gap-4">
+            <LanguageSelector />
+            <ThemeSelector />
+            <UserMenu compact={true} onOpenAuth={() => setIsAuthModalOpen(true)} onOpenPayment={() => setIsPaymentModalOpen(true)} />
           </div>
         </header>
-
-        {/* Desktop Top Right Controls */}
-        <div className="hidden lg:flex absolute top-6 right-8 z-40 items-center gap-4">
-           <UserMenu onOpenAuth={() => setIsAuthModalOpen(true)} onOpenPayment={() => setIsPaymentModalOpen(true)} />
-           <LanguageSelector />
-           <ThemeSelector />
-        </div>
 
         {/* Content Area */}
         <div className="flex-1 overflow-auto p-4 lg:p-8 relative">
@@ -288,7 +287,7 @@ const AppContent: React.FC = () => {
               <div className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] bg-app-surface-hover/20 rounded-full blur-[100px]" />
            </div>
 
-           <div className="relative z-10 max-w-7xl mx-auto h-full lg:pt-0">
+           <div className="relative z-10 max-w-7xl mx-auto h-full">
              {renderContent()}
            </div>
         </div>
