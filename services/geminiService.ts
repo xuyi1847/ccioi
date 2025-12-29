@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Modality, Type, GenerateContentResponse } from "@google/genai";
 import { decodeBase64 } from "./audioUtils";
 
@@ -9,8 +10,17 @@ export interface VideoGenerationState {
   error: string | null;
 }
 
+export interface AdvancedVideoOptions {
+  configFile: string;
+  condType?: string;
+  numSteps?: number;
+  numFrames?: number;
+  aspectRatio?: string;
+  fps?: number;
+  refImage?: string; // base64
+}
+
 // --- Initialization ---
-// We create a factory function because for Veo, we might need to re-instantiate with a new key.
 const createAIClient = () => {
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
@@ -22,7 +32,6 @@ export const streamChat = async (
   onChunk: (text: string) => void
 ) => {
   const ai = createAIClient();
-  // Using gemini-3-flash-preview for Basic Text Tasks (chat/Q&A)
   const chat = ai.chats.create({
     model: 'gemini-3-flash-preview',
     history: history,
@@ -31,7 +40,6 @@ export const streamChat = async (
   const result = await chat.sendMessageStream({ message });
   
   for await (const chunk of result) {
-    // Fix: Cast the chunk to GenerateContentResponse and use the .text property as per guidelines
     const c = chunk as GenerateContentResponse;
     if (c.text) {
       onChunk(c.text);
@@ -42,7 +50,6 @@ export const streamChat = async (
 // --- Image Generation ---
 export const generateImage = async (prompt: string, aspectRatio: string = "1:1"): Promise<string> => {
   const ai = createAIClient();
-  // Using gemini-2.5-flash-image for general image generation tasks
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash-image',
     contents: {
@@ -63,51 +70,75 @@ export const generateImage = async (prompt: string, aspectRatio: string = "1:1")
   throw new Error("No image data returned");
 };
 
-// --- Video Generation (Veo) ---
+// --- Video Generation (CCIOI / Veo) ---
 export const generateVideo = async (
   prompt: string, 
+  options: AdvancedVideoOptions,
   onProgress: (msg: string) => void
 ): Promise<string> => {
-  // 1. Check/Request Paid Key
   if (window.aistudio && !await window.aistudio.hasSelectedApiKey()) {
     await window.aistudio.openSelectKey();
-    // Proceed without checking return value, as per guidelines to assume success and mitigate race condition.
   }
 
-  // 2. Re-init client right before the API call to ensure key is active
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-  onProgress("Initializing video generation...");
-  let operation = await ai.models.generateVideos({
-    model: 'veo-3.1-fast-generate-preview', // General Video Generation Tasks
-    prompt: prompt,
-    config: {
-      numberOfVideos: 1,
-      resolution: '720p',
-      aspectRatio: '16:9'
-    }
-  });
+  onProgress("Initializing generation with config: " + options.configFile + "...");
 
-  onProgress("Rendering video (this may take a minute)...");
+  // Mapping aspect ratio to supported API values
+  let apiAspectRatio: '16:9' | '9:16' = '16:9';
+  if (options.aspectRatio === '9:16') apiAspectRatio = '9:16';
+
+  // Mapping resolution based on config file names
+  let apiResolution: '720p' | '1080p' = '720p';
+  if (options.configFile.includes('768px')) apiResolution = '1080p';
+
+  const videoConfig: any = {
+    numberOfVideos: 1,
+    resolution: apiResolution,
+    aspectRatio: apiAspectRatio
+  };
+
+  // Construct enhanced prompt based on technical parameters if needed
+  const enhancedPrompt = `${prompt} [Config: ${options.configFile}, Cond: ${options.condType || 'None'}, Steps: ${options.numSteps || 40}, Frames: ${options.numFrames || 112}, FPS: ${options.fps || 16}]`;
+
+  let operation;
+  if (options.refImage) {
+    // Reference image generation (i2v)
+    const base64Data = options.refImage.replace(/^data:image\/\w+;base64,/, "");
+    operation = await ai.models.generateVideos({
+      model: 'veo-3.1-fast-generate-preview',
+      prompt: enhancedPrompt,
+      image: {
+        imageBytes: base64Data,
+        mimeType: 'image/png'
+      },
+      config: videoConfig
+    });
+  } else {
+    // Text to video generation
+    operation = await ai.models.generateVideos({
+      model: 'veo-3.1-fast-generate-preview',
+      prompt: enhancedPrompt,
+      config: videoConfig
+    });
+  }
+
+  onProgress("Rendering high-fidelity sequence...");
   
-  // 3. Polling
   while (!operation.done) {
-    // Fix: Polling interval updated to 10s to match recommended guidelines
     await new Promise(resolve => setTimeout(resolve, 10000));
     operation = await ai.operations.getVideosOperation({ operation: operation });
   }
 
   const videoUri = operation.response?.generatedVideos?.[0]?.video?.uri;
-  if (!videoUri) throw new Error("Video generation failed to return a URI.");
+  if (!videoUri) throw new Error("Video generation failed to return a valid CCIOI stream.");
 
-  // 4. Return authenticated URL with API key
   return `${videoUri}&key=${process.env.API_KEY}`;
 };
 
 // --- Text To Speech ---
 export const generateSpeech = async (text: string, voiceName: string): Promise<Uint8Array> => {
   const ai = createAIClient();
-  // Using gemini-2.5-flash-preview-tts for Text-to-speech tasks
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash-preview-tts",
     contents: [{ parts: [{ text }] }],
@@ -144,12 +175,10 @@ export const analyzeText = async (text: string, type: 'SUMMARY' | 'SENTIMENT' | 
       break;
   }
 
-  // Using gemini-3-flash-preview for Basic Text Tasks (summarization/analysis)
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: prompt,
   });
 
-  // Fix: Directly accessing .text property as per guidelines
   return response.text || "No analysis generated.";
 };

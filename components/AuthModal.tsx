@@ -42,104 +42,107 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-lg overflow-y-auto">
-      <div className="w-full max-w-md bg-app-surface border border-app-border rounded-2xl shadow-2xl overflow-hidden relative transition-all duration-300 opacity-0 animate-[fadeIn_0.3s_ease-out_forwards] my-auto flex flex-col pointer-events-auto">
-        
-        <button 
-          onClick={onClose}
-          className="absolute top-4 right-4 text-app-subtext hover:text-app-text transition-colors z-[10000] p-1 bg-app-surface/50 rounded-full"
-        >
-          <X size={20} />
-        </button>
+    <div className="fixed inset-0 z-[10000] flex flex-col items-center justify-center p-4 bg-black/85 backdrop-blur-xl overflow-y-auto overflow-x-hidden">
+      {/* Scrollable Container Wrapper */}
+      <div className="w-full flex items-center justify-center min-h-full py-8">
+        <div className="w-full max-w-md bg-app-surface border border-app-border rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden relative transition-all duration-300 opacity-0 animate-[fadeIn_0.3s_ease-out_forwards] flex flex-col pointer-events-auto">
+          
+          <button 
+            onClick={onClose}
+            className="absolute top-4 right-4 text-app-subtext hover:text-app-text transition-colors z-[10001] p-1 bg-app-surface/50 rounded-full"
+          >
+            <X size={20} />
+          </button>
 
-        <div className="p-5 md:p-8 overflow-y-auto max-h-[85vh]">
-          <div className="text-center mb-6 md:mb-8 mt-2">
-            <h2 className="text-xl md:text-2xl font-bold text-app-text mb-2">
-              {isLogin ? t('auth.welcome_back') : t('auth.create_account')}
-            </h2>
-            <p className="text-app-subtext text-xs md:text-sm">
-              {isLogin ? 'Enter your details to access your AI tools' : 'Join us to explore the power of Generative AI'}
-            </p>
-          </div>
+          <div className="p-6 md:p-10">
+            <div className="text-center mb-6 md:mb-10">
+              <h2 className="text-2xl md:text-3xl font-bold text-app-text mb-2">
+                {isLogin ? t('auth.welcome_back') : t('auth.create_account')}
+              </h2>
+              <p className="text-app-subtext text-xs md:text-sm">
+                {isLogin ? 'Enter your details to access CCIOI tools' : 'Join us to explore the power of Generative AI'}
+              </p>
+            </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {!isLogin && (
+            <form onSubmit={handleSubmit} className="space-y-4 md:space-y-5">
+              {!isLogin && (
+                <div className="space-y-1.5">
+                  <label className="text-[10px] md:text-xs font-bold text-app-subtext uppercase tracking-wider">{t('auth.name')}</label>
+                  <div className="relative">
+                    <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-app-subtext w-4 h-4" />
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Your Name"
+                      className="w-full bg-app-surface-hover border border-app-border rounded-xl py-3 pl-10 pr-4 text-app-text text-sm outline-none focus:border-app-accent transition-colors shadow-inner"
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-1.5">
-                <label className="text-[10px] md:text-xs font-semibold text-app-subtext uppercase tracking-wider">{t('auth.name')}</label>
+                <label className="text-[10px] md:text-xs font-bold text-app-subtext uppercase tracking-wider">{t('auth.email')}</label>
                 <div className="relative">
-                  <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-app-subtext w-4 h-4" />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-app-subtext w-4 h-4" />
                   <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Your Name"
-                    className="w-full bg-app-surface-hover border border-app-border rounded-xl py-2.5 md:py-3 pl-10 pr-4 text-app-text text-sm outline-none focus:border-app-accent transition-colors"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@example.com"
+                    className="w-full bg-app-surface-hover border border-app-border rounded-xl py-3 pl-10 pr-4 text-app-text text-sm outline-none focus:border-app-accent transition-colors shadow-inner"
+                    required
                   />
                 </div>
               </div>
-            )}
 
-            <div className="space-y-1.5">
-              <label className="text-[10px] md:text-xs font-semibold text-app-subtext uppercase tracking-wider">{t('auth.email')}</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-app-subtext w-4 h-4" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@example.com"
-                  className="w-full bg-app-surface-hover border border-app-border rounded-xl py-2.5 md:py-3 pl-10 pr-4 text-app-text text-sm outline-none focus:border-app-accent transition-colors"
-                  required
-                />
+              <div className="space-y-1.5">
+                <label className="text-[10px] md:text-xs font-bold text-app-subtext uppercase tracking-wider">{t('auth.password')}</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-app-subtext w-4 h-4" />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-app-surface-hover border border-app-border rounded-xl py-3 pl-10 pr-4 text-app-text text-sm outline-none focus:border-app-accent transition-colors shadow-inner"
+                    required
+                  />
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[10px] md:text-xs font-semibold text-app-subtext uppercase tracking-wider">{t('auth.password')}</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-app-subtext w-4 h-4" />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-app-surface-hover border border-app-border rounded-xl py-2.5 md:py-3 pl-10 pr-4 text-app-text text-sm outline-none focus:border-app-accent transition-colors"
-                  required
-                />
-              </div>
-            </div>
-
-            {error && (
-              <div className="text-red-400 text-xs text-center bg-red-900/10 p-2 rounded-lg border border-red-900/20">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-app-accent hover:bg-app-accent-hover text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-app-accent/20 flex items-center justify-center gap-2 mt-4 text-sm"
-            >
-              {isLoading ? (
-                <Loader2 className="animate-spin w-5 h-5" />
-              ) : (
-                <>
-                  {isLogin ? t('auth.login_action') : t('auth.signup_action')} <ArrowRight className="w-4 h-4" />
-                </>
+              {error && (
+                <div className="text-red-400 text-xs text-center bg-red-900/20 p-3 rounded-lg border border-red-900/30">
+                  {error}
+                </div>
               )}
-            </button>
-          </form>
 
-          <div className="mt-6 text-center mb-2">
-            <p className="text-app-subtext text-xs md:text-sm">
-              {isLogin ? t('auth.no_account') : t('auth.have_account')}{' '}
               <button
-                onClick={() => setIsLogin(!isLogin)}
-                className="text-app-accent hover:underline font-bold"
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-app-accent hover:bg-app-accent-hover disabled:opacity-50 text-white py-3.5 rounded-xl font-bold transition-all shadow-xl shadow-app-accent/30 flex items-center justify-center gap-2 mt-4 text-sm tracking-wide"
               >
-                {isLogin ? t('auth.signup_action') : t('auth.login_action')}
+                {isLoading ? (
+                  <Loader2 className="animate-spin w-5 h-5" />
+                ) : (
+                  <>
+                    {isLogin ? t('auth.login_action') : t('auth.signup_action')} <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
-            </p>
+            </form>
+
+            <div className="mt-8 text-center">
+              <p className="text-app-subtext text-xs md:text-sm">
+                {isLogin ? t('auth.no_account') : t('auth.have_account')}{' '}
+                <button
+                  onClick={() => setIsLogin(!isLogin)}
+                  className="text-app-accent hover:underline font-bold"
+                >
+                  {isLogin ? t('auth.signup_action') : t('auth.login_action')}
+                </button>
+              </p>
+            </div>
           </div>
         </div>
       </div>

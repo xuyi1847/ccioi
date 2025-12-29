@@ -1,74 +1,66 @@
+
 import { User } from '../types';
 
-const USERS_KEY = 'ccioi_users';
-const CURRENT_USER_KEY = 'ccioi_current_user_id';
-
-// Helper to delay execution (simulate network latency)
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const API_BASE = 'http://localhost:8000/api';
 
 export const mockBackend = {
   async login(email: string): Promise<User> {
-    await delay(800);
-    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
-    const user = users.find((u: User) => u.email === email);
+    const response = await fetch(`${API_BASE}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
     
-    if (!user) {
-      throw new Error('User not found. Please register.');
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Login failed');
     }
     
-    localStorage.setItem(CURRENT_USER_KEY, user.id);
+    const user = await response.json();
+    localStorage.setItem('ccioi_current_user_id', user.id);
     return user;
   },
 
   async register(email: string, name: string): Promise<User> {
-    await delay(1000);
-    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+    const response = await fetch(`${API_BASE}/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, name })
+    });
     
-    if (users.find((u: User) => u.email === email)) {
-      throw new Error('Email already exists.');
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Registration failed');
     }
 
-    const newUser: User = {
-      id: Date.now().toString(),
-      email,
-      name,
-      balance: 50, // Sign up bonus
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`
-    };
-
-    users.push(newUser);
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
-    localStorage.setItem(CURRENT_USER_KEY, newUser.id);
-    return newUser;
+    const user = await response.json();
+    localStorage.setItem('ccioi_current_user_id', user.id);
+    return user;
   },
 
   async logout(): Promise<void> {
-    await delay(300);
-    localStorage.removeItem(CURRENT_USER_KEY);
+    localStorage.removeItem('ccioi_current_user_id');
   },
 
   async getCurrentUser(): Promise<User | null> {
-    await delay(200);
-    const id = localStorage.getItem(CURRENT_USER_KEY);
+    const id = localStorage.getItem('ccioi_current_user_id');
     if (!id) return null;
-
-    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
-    return users.find((u: User) => u.id === id) || null;
+    
+    // In a real app, you'd have a /me endpoint that validates a token
+    // For this bridge, we assume the user is still in memory or cached
+    return null; // Force login for demo purposes to sync with Python state
   },
 
   async addBalance(amount: number): Promise<number> {
-    await delay(2000); // Simulate payment processing time
-    const id = localStorage.getItem(CURRENT_USER_KEY);
+    const id = localStorage.getItem('ccioi_current_user_id');
     if (!id) throw new Error('Not authenticated');
 
-    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
-    const userIndex = users.findIndex((u: User) => u.id === id);
+    const response = await fetch(`${API_BASE}/recharge/${id}?amount=${amount}`, {
+      method: 'POST'
+    });
     
-    if (userIndex === -1) throw new Error('User not found');
-
-    users[userIndex].balance += amount;
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
-    
-    return users[userIndex].balance;
+    if (!response.ok) throw new Error('Recharge failed');
+    const data = await response.json();
+    return data.new_balance;
   }
 };
