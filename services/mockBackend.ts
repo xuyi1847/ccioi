@@ -1,7 +1,7 @@
 
 import { User } from '../types';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = 'http://115.191.1.112:8000/api';
 
 export const mockBackend = {
   async login(email: string): Promise<User> {
