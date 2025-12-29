@@ -1,7 +1,9 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { Video, Play, Settings, Image as ImageIcon, Trash2, Cpu, Link, Globe, Wifi, WifiOff, FileCode, CheckCircle2, Loader2, Download } from 'lucide-react';
+import { Video, Play, Settings, Image as ImageIcon, Trash2, Cpu, Link, Globe, Wifi, WifiOff, FileCode, CheckCircle2, Loader2, Download, Terminal, ChevronDown, ChevronUp } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useSocket } from '../context/SocketContext';
+import { HistoryRecord } from '../types';
 
 const CONFIG_FILES = [
   'configs/diffusion/inference/256px.py',
@@ -13,6 +15,11 @@ const CONFIG_FILES = [
 ];
 
 const COND_TYPES = ['None', 'i2v_head', 'i2v_tail', 'i2v_loop'];
+
+interface TaskLog {
+  stream: 'stdout' | 'stderr';
+  line: string;
+}
 
 const VideoTool: React.FC = () => {
   const { t } = useLanguage();
@@ -29,8 +36,18 @@ const VideoTool: React.FC = () => {
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
+  const [logs, setLogs] = useState<TaskLog[]>([]);
+  const [showConsole, setShowConsole] = useState(true);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const logEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll logs
+  useEffect(() => {
+    if (logEndRef.current) {
+      logEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs]);
 
   // Sync condition type with reference image presence
   useEffect(() => {
@@ -46,14 +63,40 @@ const VideoTool: React.FC = () => {
     if (lastMessage) {
       try {
         const data = JSON.parse(lastMessage);
+        
+        // Handle Logs
+        if (data.type === 'TASK_LOG') {
+          setLogs(prev => [...prev, { stream: data.stream, line: data.line }]);
+        }
+        
+        // Handle Completion
         if (data.type === 'task_finished') {
           if (data.status === 'success' && data.output?.public_url) {
             setGeneratedVideoUrl(data.output.public_url);
             setIsGenerating(false);
+
+            // SAVE TO HISTORY
+            const newRecord: HistoryRecord = {
+              id: data.task_id || Date.now().toString(),
+              type: 'video',
+              prompt: prompt,
+              url: data.output.public_url,
+              timestamp: Date.now(),
+              params: {
+                config: configFile,
+                cond: condType,
+                steps: numSteps,
+                frames: numFrames,
+                fps: fps
+              }
+            };
+
+            const existingHistory = JSON.parse(localStorage.getItem('ccioi_video_history') || '[]');
+            localStorage.setItem('ccioi_video_history', JSON.stringify([newRecord, ...existingHistory]));
           } else {
             console.error('Task failed or no URL provided', data);
             setIsGenerating(false);
-            alert('Generation failed. Please try again.');
+            alert('Generation failed. Please check the logs.');
           }
         }
       } catch (e) {
@@ -79,6 +122,7 @@ const VideoTool: React.FC = () => {
 
     setIsGenerating(true);
     setGeneratedVideoUrl(null);
+    setLogs([]); // Reset logs for new task
 
     const payload = {
       type: 'TASK_EXECUTION',
@@ -102,7 +146,7 @@ const VideoTool: React.FC = () => {
   return (
     <div className="h-full flex flex-col lg:flex-row gap-6 p-2">
       {/* Sidebar - Parameters Control */}
-      <div className="w-full lg:w-[400px] flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-1">
+      <div className="w-full lg:w-[400px] flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-1 shrink-0">
         <div className="bg-app-surface/60 p-6 rounded-3xl border border-app-border shadow-xl backdrop-blur-md">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-bold flex items-center gap-2 text-cyan-400">
@@ -213,18 +257,51 @@ const VideoTool: React.FC = () => {
       </div>
 
       {/* Main Preview Area */}
-      <div className="flex-1 flex flex-col gap-6">
+      <div className="flex-1 flex flex-col gap-6 overflow-hidden">
         <div className="bg-app-surface/30 rounded-3xl border border-app-border p-4 flex-1 flex flex-col min-h-[400px] items-center justify-center relative overflow-hidden">
           
           {isGenerating && (
-            <div className="absolute inset-0 z-20 bg-app-base/80 backdrop-blur-sm flex flex-col items-center justify-center gap-4 text-center p-8 animate-fade-in">
-              <div className="relative">
-                <div className="w-20 h-20 border-4 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin" />
-                <Video className="absolute inset-0 m-auto text-cyan-400 animate-pulse" size={32} />
+            <div className="absolute inset-0 z-20 bg-app-base/90 backdrop-blur-md flex flex-col animate-fade-in">
+              {/* Progress Header */}
+              <div className="p-8 flex flex-col items-center justify-center gap-4 text-center">
+                <div className="relative">
+                  <div className="w-16 h-16 border-4 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin" />
+                  <Video className="absolute inset-0 m-auto text-cyan-400 animate-pulse" size={24} />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-xl font-bold text-app-text tracking-tight">Generating AI Video</h3>
+                  <p className="text-app-subtext text-xs uppercase tracking-widest">Cluster Node: GPU_NODE_112</p>
+                </div>
               </div>
-              <div className="space-y-2">
-                <h3 className="text-xl font-bold text-app-text tracking-tight">Generating AI Video</h3>
-                <p className="text-app-subtext text-xs">Awaiting task completion from the CCIOI cluster...</p>
+
+              {/* Console Viewer */}
+              <div className="flex-1 px-4 pb-4 flex flex-col overflow-hidden">
+                 <div className="bg-black/40 border border-white/5 rounded-2xl overflow-hidden flex flex-col h-full shadow-2xl">
+                    <div className="bg-white/5 px-4 py-2 flex items-center justify-between border-b border-white/5">
+                       <div className="flex items-center gap-2 text-[10px] font-bold text-cyan-400 uppercase tracking-widest">
+                          <Terminal size={12} /> Live Output Logs
+                       </div>
+                       <button onClick={() => setShowConsole(!showConsole)} className="text-app-subtext hover:text-white transition-colors">
+                          {showConsole ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                       </button>
+                    </div>
+                    
+                    {showConsole && (
+                      <div className="flex-1 overflow-y-auto p-4 font-mono text-[10px] leading-relaxed custom-scrollbar bg-black/20">
+                        {logs.length === 0 ? (
+                           <div className="text-app-subtext/40 animate-pulse">Initializing kernel environment...</div>
+                        ) : (
+                          logs.map((log, i) => (
+                            <div key={i} className={`mb-1 break-all ${log.stream === 'stderr' ? 'text-rose-400' : 'text-cyan-100/70'}`}>
+                               <span className="opacity-30 mr-2">[{new Date().toLocaleTimeString([], { hour12: false })}]</span>
+                               {log.line}
+                            </div>
+                          ))
+                        )}
+                        <div ref={logEndRef} />
+                      </div>
+                    )}
+                 </div>
               </div>
             </div>
           )}
@@ -256,7 +333,7 @@ const VideoTool: React.FC = () => {
                 </button>
               </div>
             </div>
-          ) : (
+          ) : !isGenerating && (
             <div className="max-w-md space-y-8 animate-fade-in text-center">
               <div className="w-24 h-24 bg-cyan-500/10 rounded-full flex items-center justify-center mx-auto relative">
                   <div className="absolute inset-0 bg-cyan-500/20 rounded-full animate-ping" />
@@ -297,7 +374,7 @@ const VideoTool: React.FC = () => {
           )}
         </div>
 
-        <div className="bg-app-accent/5 border border-app-accent/20 rounded-2xl p-6 flex items-center gap-4 backdrop-blur-sm">
+        <div className="bg-app-accent/5 border border-app-accent/20 rounded-2xl p-6 flex items-center gap-4 backdrop-blur-sm shrink-0">
            <div className="w-12 h-12 bg-app-accent/10 rounded-full flex items-center justify-center text-app-accent">
               <Globe size={24} />
            </div>

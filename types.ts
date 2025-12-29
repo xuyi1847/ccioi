@@ -8,6 +8,7 @@ export enum AppView {
   VIDEO = 'VIDEO',
   AUDIO = 'AUDIO',
   TEXT_ANALYSIS = 'TEXT_ANALYSIS',
+  HISTORY = 'HISTORY',
 }
 
 export interface User {
@@ -23,6 +24,15 @@ export interface Message {
   role: 'user' | 'model';
   content: string;
   timestamp: number;
+}
+
+export interface HistoryRecord {
+  id: string;
+  type: 'video' | 'image';
+  prompt: string;
+  url: string;
+  timestamp: number;
+  params?: any;
 }
 
 export interface GeneratedImage {
@@ -46,7 +56,6 @@ export interface ToolConfig {
   id: AppView;
   name: string;
   description: string;
-  // Fix: Added React import to resolve the 'React' namespace error
   icon: React.ComponentType<any>;
   color: string;
 }

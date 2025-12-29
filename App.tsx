@@ -10,7 +10,8 @@ import {
   Menu,
   X,
   Play,
-  Sparkles
+  Sparkles,
+  History
 } from 'lucide-react';
 import { AppView, ToolConfig } from './types';
 import ChatTool from './components/ChatTool';
@@ -18,6 +19,7 @@ import ImageTool from './components/ImageTool';
 import VideoTool from './components/VideoTool';
 import AudioTool from './components/AudioTool';
 import TextTool from './components/TextTool';
+import HistoryTool from './components/HistoryTool';
 import Logo from './components/Logo';
 import AuthModal from './components/AuthModal';
 import PaymentModal from './components/PaymentModal';
@@ -46,6 +48,7 @@ const AppContent: React.FC = () => {
     { id: AppView.VIDEO, name: t('nav.video'), description: t('nav.video.desc'), icon: Video, color: 'text-cyan-400' },
     { id: AppView.AUDIO, name: t('nav.audio'), description: t('nav.audio.desc'), icon: Mic, color: 'text-rose-400' },
     { id: AppView.TEXT_ANALYSIS, name: t('nav.text'), description: t('nav.text.desc'), icon: FileText, color: 'text-emerald-400' },
+    { id: AppView.HISTORY, name: t('nav.history'), description: t('nav.history.desc'), icon: History, color: 'text-app-subtext' },
   ];
 
   const demoVideos = [
@@ -69,6 +72,7 @@ const AppContent: React.FC = () => {
       case AppView.VIDEO: return <VideoTool />;
       case AppView.AUDIO: return <AudioTool />;
       case AppView.TEXT_ANALYSIS: return <TextTool />;
+      case AppView.HISTORY: return <HistoryTool />;
       default: return (
         <div className="flex flex-col items-center gap-8 md:gap-16 py-4 md:py-8">
           {/* Welcome Header */}
@@ -85,7 +89,7 @@ const AppContent: React.FC = () => {
           <div className="w-full max-w-6xl px-4">
             <h2 className="text-[10px] md:text-sm font-bold text-app-subtext uppercase tracking-[0.3em] mb-4 md:mb-8 text-center">{t('app.modules')}</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
-              {tools.map((tool) => (
+              {tools.slice(0, 5).map((tool) => (
                 <button
                   key={tool.id}
                   onClick={() => setCurrentView(tool.id)}
