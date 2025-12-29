@@ -13,7 +13,7 @@ const SocketContext = createContext<SocketContextType | undefined>(undefined);
 export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [lastMessage, setLastMessage] = useState<string | null>(null);
-  const [serverUrl, setServerUrl] = useState('wss://ccioi.com/ws');
+  const [serverUrl, setServerUrl] = useState('wss://www.ccioi.com/ws');
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
 
