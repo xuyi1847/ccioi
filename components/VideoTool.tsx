@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Video, Play, Settings, Image as ImageIcon, Trash2, Cpu, Link, Globe, Wifi, WifiOff, FileCode, CheckCircle2, Loader2, Download, Terminal, ChevronDown, ChevronUp } from 'lucide-react';
+import { Video, Play, Settings, Image as ImageIcon, Trash2, Cpu, Link, Globe, Wifi, WifiOff, FileCode, CheckCircle2, Loader2, Download, Terminal, ChevronDown, ChevronUp, Activity } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useSocket } from '../context/SocketContext';
 import { HistoryRecord } from '../types';
@@ -32,6 +32,7 @@ const VideoTool: React.FC = () => {
   const [numFrames, setNumFrames] = useState(112);
   const [aspectRatio, setAspectRatio] = useState('9:16');
   const [fps, setFps] = useState(16);
+  const [motionScore, setMotionScore] = useState(6);
   const [refImage, setRefImage] = useState<string | null>(null);
   
   const [isGenerating, setIsGenerating] = useState(false);
@@ -87,7 +88,8 @@ const VideoTool: React.FC = () => {
                 cond: condType,
                 steps: numSteps,
                 frames: numFrames,
-                fps: fps
+                fps: fps,
+                motion_score: motionScore
               }
             };
 
@@ -124,18 +126,22 @@ const VideoTool: React.FC = () => {
     setGeneratedVideoUrl(null);
     setLogs([]); // Reset logs for new task
 
+    // Formatting prompt to escape double quotes
+    const sanitizedPrompt = prompt.replace(/"/g, '\\"');
+
     const payload = {
       type: 'TASK_EXECUTION',
       task: 'VIDEO_GENERATION',
       timestamp: new Date().toISOString(),
       parameters: {
-        prompt, 
+        prompt: sanitizedPrompt, 
         config: configFile, 
         cond: condType, 
         steps: numSteps, 
         frames: numFrames, 
         ratio: aspectRatio, 
-        fps: fps, 
+        fps: fps,
+        motion_score: motionScore,
         ref_image: refImage 
       }
     };
@@ -144,7 +150,7 @@ const VideoTool: React.FC = () => {
   };
 
   return (
-    <div className="h-full flex flex-col lg:flex-row gap-6 p-2">
+    <div className="h-full flex flex-col lg:flex-row gap-6 p-2 overflow-hidden">
       {/* Sidebar - Parameters Control */}
       <div className="w-full lg:w-[400px] flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-1 shrink-0">
         <div className="bg-app-surface/60 p-6 rounded-3xl border border-app-border shadow-xl backdrop-blur-md">
@@ -244,6 +250,29 @@ const VideoTool: React.FC = () => {
               </div>
             </div>
 
+            {/* Motion Score Selection */}
+            <div className="p-3 bg-app-base/30 rounded-2xl border border-app-border">
+                <label className="text-[10px] font-bold text-app-subtext uppercase tracking-widest block mb-2 flex items-center gap-2">
+                    <Activity size={12} className="text-cyan-400" />
+                    {t('tool.video.motion_score')}
+                </label>
+                <div className="flex justify-between gap-1">
+                    {[1, 2, 3, 4, 5, 6, 7].map(score => (
+                        <button
+                            key={score}
+                            onClick={() => setMotionScore(score)}
+                            className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all border ${
+                                motionScore === score 
+                                    ? 'bg-cyan-500 border-cyan-400 text-white shadow-lg shadow-cyan-900/40' 
+                                    : 'bg-app-base border-app-border text-app-subtext hover:border-app-subtext/50'
+                            }`}
+                        >
+                            {score}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
             <button
               onClick={handleDispatch}
               disabled={isGenerating}
@@ -258,7 +287,7 @@ const VideoTool: React.FC = () => {
 
       {/* Main Preview Area */}
       <div className="flex-1 flex flex-col gap-6 overflow-hidden">
-        <div className="bg-app-surface/30 rounded-3xl border border-app-border p-4 flex-1 flex flex-col min-h-[400px] items-center justify-center relative overflow-hidden">
+        <div className="bg-app-surface/30 rounded-3xl border border-app-border flex-1 flex flex-col min-h-[400px] items-center justify-center relative overflow-hidden group/preview">
           
           {isGenerating && (
             <div className="absolute inset-0 z-20 bg-app-base/90 backdrop-blur-md flex flex-col animate-fade-in">
@@ -307,34 +336,34 @@ const VideoTool: React.FC = () => {
           )}
 
           {generatedVideoUrl ? (
-            <div className="w-full h-full flex flex-col items-center justify-center animate-fade-in group relative">
+            <div className="w-full h-full flex items-center justify-center animate-fade-in group relative p-4">
               <video 
                 src={generatedVideoUrl} 
-                className="max-w-full max-h-full rounded-2xl shadow-2xl border border-white/5" 
+                className="max-w-full max-h-full rounded-2xl shadow-2xl border border-white/5 object-contain" 
                 controls 
                 autoPlay 
                 loop
               />
-              <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+              <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
                 <a 
                   href={generatedVideoUrl} 
                   download 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="p-2 bg-black/60 hover:bg-black/80 rounded-full text-white backdrop-blur-md transition-all"
+                  className="p-2.5 bg-black/60 hover:bg-black/80 rounded-full text-white backdrop-blur-md transition-all shadow-xl"
                 >
-                  <Download size={18} />
+                  <Download size={20} />
                 </a>
                 <button 
                   onClick={() => setGeneratedVideoUrl(null)}
-                  className="p-2 bg-red-500/60 hover:bg-red-500/80 rounded-full text-white backdrop-blur-md transition-all"
+                  className="p-2.5 bg-red-500/60 hover:bg-red-500/80 rounded-full text-white backdrop-blur-md transition-all shadow-xl"
                 >
-                  <Trash2 size={18} />
+                  <Trash2 size={20} />
                 </button>
               </div>
             </div>
           ) : !isGenerating && (
-            <div className="max-w-md space-y-8 animate-fade-in text-center">
+            <div className="max-w-md space-y-8 animate-fade-in text-center p-8">
               <div className="w-24 h-24 bg-cyan-500/10 rounded-full flex items-center justify-center mx-auto relative">
                   <div className="absolute inset-0 bg-cyan-500/20 rounded-full animate-ping" />
                   <Video size={48} className="text-cyan-400" />

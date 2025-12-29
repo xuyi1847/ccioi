@@ -42,8 +42,8 @@ const HistoryTool: React.FC = () => {
   };
 
   return (
-    <div className="h-full flex flex-col gap-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+    <div className="h-full flex flex-col gap-6 animate-fade-in overflow-hidden">
+      <div className="flex items-center justify-between shrink-0">
         <div>
           <h2 className="text-2xl font-bold text-app-text flex items-center gap-3">
             <History className="text-app-accent" size={28} />
@@ -73,24 +73,26 @@ const HistoryTool: React.FC = () => {
           <p className="text-app-subtext max-w-xs">{t('tool.history.empty')}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 overflow-y-auto pr-2 custom-scrollbar pb-12">
+        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 overflow-y-auto pr-2 custom-scrollbar pb-12">
           {history.map((item) => (
             <div key={item.id} className="group bg-app-surface/60 rounded-3xl border border-app-border overflow-hidden hover:border-app-accent/50 transition-all flex flex-col shadow-xl">
-              {/* Video Preview */}
-              <div className="aspect-[9/16] bg-black relative flex items-center justify-center overflow-hidden">
+              {/* Video Preview Container */}
+              <div className="aspect-[9/16] bg-black/40 relative flex items-center justify-center overflow-hidden">
                 <video 
                   src={item.url} 
-                  className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" 
+                  className="w-full h-full object-contain opacity-80 group-hover:opacity-100 transition-opacity" 
                   muted 
                   playsInline 
                   onMouseEnter={(e) => (e.target as HTMLVideoElement).play()}
                   onMouseLeave={(e) => {
-                    (e.target as HTMLVideoElement).pause();
-                    (e.target as HTMLVideoElement).currentTime = 0;
+                    const video = e.target as HTMLVideoElement;
+                    video.pause();
+                    video.currentTime = 0;
                   }}
                 />
                 
-                <div className="absolute top-4 right-4 flex gap-2 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
+                {/* Hover Actions */}
+                <div className="absolute top-4 right-4 flex gap-2 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 z-10">
                   <a 
                     href={item.url} 
                     target="_blank" 
@@ -107,13 +109,15 @@ const HistoryTool: React.FC = () => {
                   </button>
                 </div>
 
+                {/* Play Icon Placeholder */}
                 <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
                    <div className="w-14 h-14 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white opacity-100 group-hover:opacity-0 transition-opacity">
                       <Play size={24} fill="white" className="ml-1" />
                    </div>
                 </div>
 
-                <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/40 to-transparent">
+                {/* Bottom Overlay Info */}
+                <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none">
                   <div className="flex items-center gap-2 text-[10px] text-app-accent font-bold uppercase tracking-wider mb-1">
                     <Video size={10} /> {item.type.toUpperCase()}
                   </div>
@@ -123,9 +127,9 @@ const HistoryTool: React.FC = () => {
                 </div>
               </div>
 
-              {/* Info Area */}
-              <div className="p-5 flex-1 flex flex-col">
-                <p className="text-sm text-app-text font-medium line-clamp-3 mb-4 flex-1">
+              {/* Card Text Content */}
+              <div className="p-5 flex-1 flex flex-col bg-app-surface/40">
+                <p className="text-sm text-app-text font-medium line-clamp-2 mb-4 flex-1">
                   {item.prompt}
                 </p>
                 

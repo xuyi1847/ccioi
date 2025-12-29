@@ -47,6 +47,7 @@ def build_torchrun_command(payload: dict) -> str:
         "--sampling_option.num_frames", str(p["frames"]),
         "--sampling_option.aspect_ratio", p["ratio"],
         "--fps_save", str(p["fps"]),
+        "--motion_score", str(p["motion_score"])
     ]
 
     # ✅ 只有存在 ref_image 时才加 cond_type / ref
