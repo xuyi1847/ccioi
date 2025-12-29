@@ -1,4 +1,3 @@
-
 import { User } from '../types';
 
 const API_BASE = 'http://115.191.1.112:8000/api';
@@ -45,9 +44,6 @@ export const mockBackend = {
   async getCurrentUser(): Promise<User | null> {
     const id = localStorage.getItem('ccioi_current_user_id');
     if (!id) return null;
-    
-    // In a real app, you'd have a /me endpoint that validates a token
-    // For this bridge, we assume the user is still in memory or cached
     return null; // Force login for demo purposes to sync with Python state
   },
 
