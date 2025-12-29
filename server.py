@@ -132,19 +132,13 @@ async def gpu_ws(ws: WebSocket):
                 print("📦 GPU RETURN PAYLOAD:")
                 print(json.dumps(msg, ensure_ascii=False, indent=2))
 
-                # 转发给前端
                 frontend_ws = task_frontend_map.pop(task_id, None)
                 task_gpu_map.pop(task_id, None)
 
                 if frontend_ws:
-                    payload = {
-                        "type": "TASK_RESULT",
-                        "task_id": task_id,
-                        "result": msg
-                    }
-                    print("📤 Forwarding TASK_RESULT to frontend:")
-                    print(json.dumps(payload, ensure_ascii=False, indent=2))
-                    await frontend_ws.send_text(json.dumps(payload))
+                    print("📤 Forwarding task_finished to frontend (passthrough)")
+                    # ✅ 原样透传，不包、不改
+                    await frontend_ws.send_text(json.dumps(msg))
                 else:
                     print(f"⚠️ No frontend websocket found for task {task_id}")
 
