@@ -1,6 +1,6 @@
 import { User } from '../types';
 
-const API_BASE = 'https://115.191.1.112:8000/api';
+const API_BASE = 'https://ccioi.com/api';
 
 export const mockBackend = {
   async login(email: string): Promise<User> {
