@@ -3,7 +3,7 @@
  * Aliyun OSS Upload Service (via Proxy Backend)
  */
 
-const UPLOAD_ENDPOINT = 'http://115.191.1.112:8000/upload';
+const UPLOAD_ENDPOINT = 'https://115.191.1.112:8000/upload';
 
 /**
  * Uploads a file to Aliyun OSS via the backend proxy to handle CORS and auth.

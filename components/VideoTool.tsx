@@ -165,7 +165,7 @@ const VideoTool: React.FC = () => {
                 <input 
                   type="text" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)}
                   className="flex-1 bg-transparent text-xs text-app-text outline-none"
-                  placeholder="ws://115.191.1.112:8000/ws"
+                  placeholder="wss://115.191.1.112:8000/ws"
                 />
                 <Link size={12} className="text-app-subtext" />
               </div>
