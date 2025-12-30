@@ -7,6 +7,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 import os
 import oss2
 from fastapi import UploadFile, File, HTTPException
+from fastapi import Depends, Header
 app = FastAPI()
 
 # =========================================================
@@ -171,6 +172,22 @@ async def gpu_ws(ws: WebSocket):
                     await frontend_ws.send_text(json.dumps(msg))
                 else:
                     print(f"⚠️ No frontend websocket found for task {task_id}")
+                if msg.get("status") == "success":
+                    user_id = msg.get("user_id")
+                    task_id = msg.get("task_id")
+
+                    if user_id:
+                        meta_key = f"users/{user_id}/meta/{task_id}.json"
+                        bucket.put_object(
+                            meta_key,
+                            json.dumps({
+                                "id": task_id,
+                                "user_id": user_id,
+                                "prompt": msg.get("prompt"),
+                                "video_url": msg.get("public_url"),
+                                "created_at": time.time(),
+                            })
+                        )
 
             else:
                 print(f"⚠️ Unknown GPU message type: {msg_type}")
@@ -383,3 +400,55 @@ async def login(req: LoginReq):
         raise HTTPException(status_code=404, detail="User not found")
 
     return user
+
+
+def get_user_id_from_auth(authorization: str = Header(...)):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+    return authorization.replace("Bearer ", "").strip()
+
+
+@app.get("/history")
+async def get_history(user_id: str = Depends(get_user_id_from_auth)):
+    """
+    获取用户生成历史（从 OSS meta 目录读取）
+    """
+    prefix = f"users/{user_id}/meta/"
+    records = []
+
+    try:
+        for obj in oss2.ObjectIterator(bucket, prefix=prefix):
+            content = bucket.get_object(obj.key).read().decode("utf-8")
+            records.append(json.loads(content))
+
+        # 按时间倒序
+        records.sort(key=lambda x: x.get("created_at", 0), reverse=True)
+        return records
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/history/{task_id}")
+async def delete_history_item(
+    task_id: str,
+    user_id: str = Depends(get_user_id_from_auth)
+):
+    """
+    删除历史记录（meta + video）
+    """
+    meta_key = f"users/{user_id}/meta/{task_id}.json"
+    video_key = f"users/{user_id}/videos/{task_id}.mp4"
+
+    try:
+        # meta 必删
+        if bucket.object_exists(meta_key):
+            bucket.delete_object(meta_key)
+
+        # video 可选删（你可以只删 meta，保留视频）
+        if bucket.object_exists(video_key):
+            bucket.delete_object(video_key)
+
+        return {"status": "deleted", "task_id": task_id}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

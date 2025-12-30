@@ -1,7 +1,8 @@
 
-import { User } from '../types';
+import { User, HistoryRecord } from '../types';
 
-const API_BASE = 'https://www.ccioi.com/api';
+const IS_DEV = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const API_BASE = IS_DEV ? 'http://127.0.0.1:8000' : 'https://www.ccioi.com/api';
 
 export const mockBackend = {
   async login(email: string): Promise<User> {
@@ -71,5 +72,32 @@ export const mockBackend = {
     if (!response.ok) throw new Error('Recharge failed');
     const data = await response.json();
     return data.new_balance;
+  },
+
+  async getHistory(token: string): Promise<HistoryRecord[]> {
+    const response = await fetch(`${API_BASE}/history`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch history');
+    }
+    
+    return await response.json();
+  },
+
+  async deleteHistoryItem(token: string, id: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/history/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to delete history item');
+    }
   }
 };

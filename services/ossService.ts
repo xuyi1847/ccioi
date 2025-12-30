@@ -3,7 +3,8 @@
  * Aliyun OSS Upload Service (via Proxy Backend)
  */
 
-const UPLOAD_ENDPOINT = 'https://www.ccioi.com/api/upload';
+const IS_DEV = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const UPLOAD_ENDPOINT = IS_DEV ? 'http://127.0.0.1:8000/upload' : 'https://www.ccioi.com/upload';
 
 /**
  * Uploads a file to Aliyun OSS via the backend proxy to handle CORS and auth.

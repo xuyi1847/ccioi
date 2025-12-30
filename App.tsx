@@ -159,7 +159,7 @@ const AppContent: React.FC = () => {
 
         <div className="flex-1 overflow-y-auto overflow-x-hidden relative p-4 lg:p-6 scroll-smooth">
            <div className="fixed inset-0 overflow-hidden pointer-events-none z-0"><div className="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] bg-app-accent/5 rounded-full blur-[100px]" /><div className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] bg-app-surface-hover/20 rounded-full blur-[100px]" /></div>
-           <div className="relative z-10 max-w-7xl mx-auto h-full">{renderContent()}</div>
+           <div className="relative z-10 max-w-7xl mx-auto min-h-full">{renderContent()}</div>
         </div>
       </main>
 

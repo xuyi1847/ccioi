@@ -11,10 +11,13 @@ interface SocketContextType {
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
 
+const IS_DEV = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const DEFAULT_WS_URL = IS_DEV ? 'ws://127.0.0.1:8000/ws' : 'wss://www.ccioi.com/ws';
+
 export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [lastMessage, setLastMessage] = useState<string | null>(null);
-  const [serverUrl, setServerUrl] = useState('wss://www.ccioi.com/ws');
+  const [serverUrl, setServerUrl] = useState(DEFAULT_WS_URL);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
 

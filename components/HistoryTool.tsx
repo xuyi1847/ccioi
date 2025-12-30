@@ -1,45 +1,64 @@
 
 import React, { useState, useEffect } from 'react';
-import { History, Trash2, Download, Video, Calendar, Play, ExternalLink, RefreshCcw } from 'lucide-react';
+import { History, Trash2, Download, Video, Calendar, Play, ExternalLink, RefreshCcw, Loader2, Lock } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 import { HistoryRecord } from '../types';
+import { mockBackend } from '../services/mockBackend';
 
 const HistoryTool: React.FC = () => {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [history, setHistory] = useState<HistoryRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadHistory();
-  }, []);
+    if (user) {
+      loadHistory();
+    }
+  }, [user]);
 
-  const loadHistory = () => {
-    const saved = localStorage.getItem('ccioi_video_history');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setHistory(parsed.sort((a: any, b: any) => b.timestamp - a.timestamp));
-      } catch (e) {
-        console.error('Error loading history', e);
-      }
+  const loadHistory = async () => {
+    if (!user) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await mockBackend.getHistory(user.id);
+      setHistory(data.sort((a, b) => b.timestamp - a.timestamp));
+    } catch (e: any) {
+      console.error('Error loading history', e);
+      setError(e.message || 'Failed to load history');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const deleteItem = (id: string) => {
-    const updated = history.filter(item => item.id !== id);
-    setHistory(updated);
-    localStorage.setItem('ccioi_video_history', JSON.stringify(updated));
-  };
-
-  const clearHistory = () => {
-    if (confirm(t('tool.history.clear') + '?')) {
-      setHistory([]);
-      localStorage.removeItem('ccioi_video_history');
+  const deleteItem = async (id: string) => {
+    if (!user) return;
+    try {
+      await mockBackend.deleteHistoryItem(user.id, id);
+      setHistory(prev => prev.filter(item => item.id !== id));
+    } catch (e) {
+      alert('Failed to delete item');
     }
   };
 
   const formatDate = (timestamp: number) => {
     return new Date(timestamp).toLocaleString();
   };
+
+  if (!user) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-center p-12 bg-app-surface/30 rounded-3xl border border-app-border border-dashed">
+        <div className="w-20 h-20 bg-app-base rounded-full flex items-center justify-center mb-6 text-app-subtext/20">
+          <Lock size={40} />
+        </div>
+        <h3 className="text-xl font-bold text-app-text mb-2">Access Restricted</h3>
+        <p className="text-app-subtext max-w-xs">Please login to view your generation history.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col gap-6 animate-fade-in overflow-hidden">
@@ -50,25 +69,34 @@ const HistoryTool: React.FC = () => {
             {t('tool.history.title')}
           </h2>
           <p className="text-app-subtext text-sm">
-            {t('tool.history.video_count').replace('{{count}}', history.length.toString())}
+            {isLoading ? 'Syncing with cluster...' : t('tool.history.video_count').replace('{{count}}', history.length.toString())}
           </p>
         </div>
         
-        {history.length > 0 && (
-          <button 
-            onClick={clearHistory}
-            className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl text-xs font-bold transition-all border border-red-500/20"
-          >
-            <RefreshCcw size={14} />
-            {t('tool.history.clear')}
-          </button>
-        )}
+        <button 
+          onClick={loadHistory}
+          disabled={isLoading}
+          className="flex items-center gap-2 px-4 py-2 bg-app-surface-hover hover:bg-app-border text-app-text rounded-xl text-xs font-bold transition-all border border-app-border disabled:opacity-50"
+        >
+          <RefreshCcw size={14} className={isLoading ? 'animate-spin' : ''} />
+          {isLoading ? 'Loading' : 'Refresh'}
+        </button>
       </div>
 
-      {history.length === 0 ? (
+      {isLoading && history.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center">
+           <Loader2 className="w-12 h-12 text-app-accent animate-spin opacity-20" />
+           <p className="mt-4 text-app-subtext font-mono text-xs uppercase tracking-widest animate-pulse">Fetching Cloud Assets...</p>
+        </div>
+      ) : error ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-center p-12 bg-red-500/5 rounded-3xl border border-red-500/10">
+          <p className="text-red-400 mb-4">{error}</p>
+          <button onClick={loadHistory} className="text-app-accent hover:underline text-sm font-bold">Try Again</button>
+        </div>
+      ) : history.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center p-12 bg-app-surface/30 rounded-3xl border border-app-border border-dashed">
           <div className="w-20 h-20 bg-app-base rounded-full flex items-center justify-center mb-6 text-app-subtext/20">
-            <History size={40} />
+            <Video size={40} />
           </div>
           <p className="text-app-subtext max-w-xs">{t('tool.history.empty')}</p>
         </div>
@@ -76,7 +104,6 @@ const HistoryTool: React.FC = () => {
         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 overflow-y-auto pr-2 custom-scrollbar pb-12">
           {history.map((item) => (
             <div key={item.id} className="group bg-app-surface/60 rounded-3xl border border-app-border overflow-hidden hover:border-app-accent/50 transition-all flex flex-col shadow-xl">
-              {/* Video Preview Container */}
               <div className="aspect-[9/16] bg-black/40 relative flex items-center justify-center overflow-hidden">
                 <video 
                   src={item.url} 
@@ -91,7 +118,6 @@ const HistoryTool: React.FC = () => {
                   }}
                 />
                 
-                {/* Hover Actions */}
                 <div className="absolute top-4 right-4 flex gap-2 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 z-10">
                   <a 
                     href={item.url} 
@@ -109,14 +135,12 @@ const HistoryTool: React.FC = () => {
                   </button>
                 </div>
 
-                {/* Play Icon Placeholder */}
                 <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
                    <div className="w-14 h-14 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white opacity-100 group-hover:opacity-0 transition-opacity">
                       <Play size={24} fill="white" className="ml-1" />
                    </div>
                 </div>
 
-                {/* Bottom Overlay Info */}
                 <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none">
                   <div className="flex items-center gap-2 text-[10px] text-app-accent font-bold uppercase tracking-wider mb-1">
                     <Video size={10} /> {item.type.toUpperCase()}
@@ -127,7 +151,6 @@ const HistoryTool: React.FC = () => {
                 </div>
               </div>
 
-              {/* Card Text Content */}
               <div className="p-5 flex-1 flex flex-col bg-app-surface/40">
                 <p className="text-sm text-app-text font-medium line-clamp-2 mb-4 flex-1">
                   {item.prompt}

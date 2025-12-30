@@ -154,8 +154,9 @@ const VideoTool: React.FC = () => {
   };
 
   return (
-    <div className="h-full flex flex-col lg:flex-row gap-6 p-1 overflow-hidden">
-      <div className="w-full lg:w-[400px] flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-1 shrink-0">
+    <div className="flex flex-col lg:flex-row lg:h-full gap-6 p-1 lg:overflow-hidden">
+      {/* Parameters Sidebar */}
+      <div className="w-full lg:w-[400px] flex flex-col gap-4 lg:overflow-y-auto custom-scrollbar pr-1 lg:shrink-0">
         <div className="bg-app-surface/60 p-6 rounded-3xl border border-app-border shadow-xl backdrop-blur-md">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-bold flex items-center gap-2 text-cyan-400">
@@ -271,8 +272,9 @@ const VideoTool: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col gap-6 overflow-hidden min-h-0">
-        <div className="bg-app-surface/30 rounded-3xl border border-app-border flex-1 flex flex-col items-center justify-center relative overflow-hidden group/preview p-0 bg-black/40">
+      {/* Main Preview / Output Box */}
+      <div className="flex-1 flex flex-col gap-6 lg:overflow-hidden min-h-[500px] lg:min-h-0">
+        <div className="bg-app-surface/30 rounded-3xl border border-app-border flex-1 flex flex-col items-center justify-center relative overflow-hidden group/preview p-0 bg-black/40 min-h-[400px]">
           
           {isGenerating && (
             <div className="absolute inset-0 z-[60] bg-app-base/95 backdrop-blur-md flex flex-col animate-fade-in">
