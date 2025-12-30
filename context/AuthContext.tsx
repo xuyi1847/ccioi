@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User } from '../types';
 import { mockBackend } from '../services/mockBackend';
@@ -6,7 +7,6 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string) => Promise<void>;
-  // Fix: Added inviteCode parameter to register signature
   register: (email: string, name: string, inviteCode: string) => Promise<void>;
   logout: () => Promise<void>;
   recharge: (amount: number) => Promise<void>;
@@ -38,7 +38,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(u);
   };
 
-  // Fix: Added inviteCode parameter and passed it to mockBackend.register
   const register = async (email: string, name: string, inviteCode: string) => {
     const u = await mockBackend.register(email, name, inviteCode);
     setUser(u);
@@ -50,10 +49,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const recharge = async (amount: number) => {
-    const newBalance = await mockBackend.addBalance(amount);
-    if (user) {
-      setUser({ ...user, balance: newBalance });
-    }
+    if (!user) throw new Error('Not authenticated');
+    const newBalance = await mockBackend.addBalance(user.token, amount);
+    setUser({ ...user, balance: newBalance });
+    // Update local storage too to keep it in sync
+    localStorage.setItem('ccioi_current_user_data', JSON.stringify({ ...user, balance: newBalance }));
   };
 
   return (

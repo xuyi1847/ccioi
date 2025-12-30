@@ -107,7 +107,7 @@ const VideoTool: React.FC = () => {
 
       setIsUploading(true);
       try {
-        const url = await uploadToOSS(file);
+        const url = await uploadToOSS(file, user.token);
         setRefImageUrl(url);
       } catch (err) {
         alert('Reference image upload to OSS failed.');
@@ -138,6 +138,7 @@ const VideoTool: React.FC = () => {
     sendCommand({
       type: 'TASK_EXECUTION',
       task: 'VIDEO_GENERATION',
+      token: user.token,
       timestamp: new Date().toISOString(),
       parameters: {
         prompt: sanitizedPrompt, 

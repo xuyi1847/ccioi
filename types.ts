@@ -16,6 +16,7 @@ export interface User {
   email: string;
   name: string;
   balance: number; // Stored in credits/tokens
+  token: string;   // JWT token containing user info
   avatar?: string;
 }
 

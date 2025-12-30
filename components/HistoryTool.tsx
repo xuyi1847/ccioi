@@ -24,7 +24,7 @@ const HistoryTool: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await mockBackend.getHistory(user.id);
+      const data = await mockBackend.getHistory(user.token);
       setHistory(data.sort((a, b) => b.timestamp - a.timestamp));
     } catch (e: any) {
       console.error('Error loading history', e);
@@ -37,7 +37,7 @@ const HistoryTool: React.FC = () => {
   const deleteItem = async (id: string) => {
     if (!user) return;
     try {
-      await mockBackend.deleteHistoryItem(user.id, id);
+      await mockBackend.deleteHistoryItem(user.token, id);
       setHistory(prev => prev.filter(item => item.id !== id));
     } catch (e) {
       alert('Failed to delete item');

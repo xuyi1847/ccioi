@@ -8,6 +8,11 @@ import os
 import oss2
 from fastapi import UploadFile, File, HTTPException
 from fastapi import Depends, Header
+import jwt
+
+JWT_SECRET = os.getenv("JWT_SECRET", "ccioi-dev-secret")
+JWT_ALGO = "HS256"
+JWT_EXPIRE_SECONDS = 60 * 60 * 24 * 7  # 7 天
 app = FastAPI()
 
 # =========================================================
@@ -53,6 +58,24 @@ task_frontend_map: Dict[str, WebSocket] = {}
 
 # task_id -> gpu_id (for debugging / optional future use)
 task_gpu_map: Dict[str, str] = {}
+
+def create_jwt(user: dict) -> str:
+    payload = {
+        "sub": user["id"],
+        "email": user["email"],
+        "iat": int(time.time()),
+        "exp": int(time.time()) + JWT_EXPIRE_SECONDS,
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGO)
+
+def parse_jwt_user_id(token: str) -> str:
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
+        return payload["sub"]
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 
 # =========================================================
@@ -357,55 +380,73 @@ class UserOut(BaseModel):
 # =========================================================
 # 注册（必须邀请码）
 # =========================================================
-@app.post("/register", response_model=UserOut)
+@app.post("/register")
 async def register(req: RegisterReq):
     email = req.email.lower().strip()
-    name = req.name.strip()
-    invite_code = req.invite_code.strip()
 
-    # 1️⃣ 校验邀请码
-    if invite_code not in VALID_INVITE_CODES:
+    if req.invite_code not in VALID_INVITE_CODES:
         raise HTTPException(status_code=403, detail="Invalid invite code")
 
-    # 2️⃣ 校验是否已注册
     if email in users_by_email:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    # 3️⃣ 创建用户
     user_id = str(uuid.uuid4())
     user = {
         "id": user_id,
         "email": email,
-        "name": name,
+        "name": req.name.strip(),
         "balance": 0.0,
         "created_at": time.time(),
-        "invite_code": invite_code,
+        "invite_code": req.invite_code,
     }
 
     users_by_email[email] = user
     users_by_id[user_id] = user
 
-    return user
+    token = create_jwt(user)
+
+    return {
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "name": user["name"],
+            "balance": user["balance"],
+        },
+        "token": token,
+    }
+
 
 
 # =========================================================
 # 登录
 # =========================================================
-@app.post("/login", response_model=UserOut)
+@app.post("/login")
 async def login(req: LoginReq):
     email = req.email.lower().strip()
-
     user = users_by_email.get(email)
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    return user
+    token = create_jwt(user)
+
+    return {
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "name": user["name"],
+            "balance": user["balance"],
+        },
+        "token": token,
+    }
+
 
 
 def get_user_id_from_auth(authorization: str = Header(...)):
     if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid authorization header")
-    return authorization.replace("Bearer ", "").strip()
+        raise HTTPException(status_code=401, detail="Invalid auth header")
+    token = authorization.replace("Bearer ", "").strip()
+    return parse_jwt_user_id(token)
 
 
 @app.get("/history")

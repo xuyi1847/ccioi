@@ -17,10 +17,13 @@ export const mockBackend = {
       throw new Error(error.detail || 'Login failed');
     }
     
-    const user = await response.json();
-    localStorage.setItem('ccioi_current_user_id', user.id);
-    localStorage.setItem('ccioi_current_user_data', JSON.stringify(user));
-    return user;
+    const data = await response.json();
+    // Assuming backend returns { user: User, token: string } or similar
+    const userWithToken = data.token ? { ...data.user, token: data.token } : data;
+    
+    localStorage.setItem('ccioi_auth_token', userWithToken.token);
+    localStorage.setItem('ccioi_current_user_data', JSON.stringify(userWithToken));
+    return userWithToken;
   },
 
   async register(email: string, name: string, inviteCode: string): Promise<User> {
@@ -39,34 +42,38 @@ export const mockBackend = {
       throw new Error(error.detail || 'Registration failed');
     }
 
-    const user = await response.json();
-    localStorage.setItem('ccioi_current_user_id', user.id);
-    localStorage.setItem('ccioi_current_user_data', JSON.stringify(user));
-    return user;
+    const data = await response.json();
+    const userWithToken = data.token ? { ...data.user, token: data.token } : data;
+
+    localStorage.setItem('ccioi_auth_token', userWithToken.token);
+    localStorage.setItem('ccioi_current_user_data', JSON.stringify(userWithToken));
+    return userWithToken;
   },
 
   async logout(): Promise<void> {
-    localStorage.removeItem('ccioi_current_user_id');
+    localStorage.removeItem('ccioi_auth_token');
     localStorage.removeItem('ccioi_current_user_data');
   },
 
   async getCurrentUser(): Promise<User | null> {
-    const id = localStorage.getItem('ccioi_current_user_id');
     const data = localStorage.getItem('ccioi_current_user_data');
-    if (!id || !data) return null;
+    if (!data) return null;
     try {
-      return JSON.parse(data);
+      const user = JSON.parse(data);
+      const token = localStorage.getItem('ccioi_auth_token');
+      if (token) user.token = token;
+      return user;
     } catch {
       return null;
     }
   },
 
-  async addBalance(amount: number): Promise<number> {
-    const id = localStorage.getItem('ccioi_current_user_id');
-    if (!id) throw new Error('Not authenticated');
-
-    const response = await fetch(`${API_BASE}/recharge/${id}?amount=${amount}`, {
-      method: 'POST'
+  async addBalance(token: string, amount: number): Promise<number> {
+    const response = await fetch(`${API_BASE}/recharge?amount=${amount}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
     });
     
     if (!response.ok) throw new Error('Recharge failed');
