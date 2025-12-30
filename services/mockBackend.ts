@@ -18,7 +18,6 @@ export const mockBackend = {
     }
     
     const data = await response.json();
-    // Assuming backend returns { user: User, token: string } or similar
     const userWithToken = data.token ? { ...data.user, token: data.token } : data;
     
     localStorage.setItem('ccioi_auth_token', userWithToken.token);
@@ -106,5 +105,28 @@ export const mockBackend = {
     if (!response.ok) {
       throw new Error('Failed to delete history item');
     }
+  },
+
+  /**
+   * 调用后端优化提示词接口
+   */
+  async optimizePrompt(type: 'IMAGE' | 'VIDEO', prompt: string, token?: string): Promise<string> {
+    const response = await fetch(`${API_BASE}/optimizePrompt`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({ type, prompt })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Optimization failed');
+    }
+
+    const data = await response.json();
+    // 假设返回格式为 { optimized_prompt: "..." } 或直接返回字符串
+    return data.optimized_prompt || data.prompt || data;
   }
 };

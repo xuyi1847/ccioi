@@ -1,11 +1,13 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Video, Play, Settings, ImageIcon, Trash2, Cpu, Link, Globe, Wifi, WifiOff, FileCode, CheckCircle2, Loader2, Download, Terminal, ChevronDown, ChevronUp, Activity, Lock } from 'lucide-react';
+import { Video, Play, Settings, ImageIcon, Trash2, Cpu, Link, Globe, Wifi, WifiOff, FileCode, CheckCircle2, Loader2, Download, Terminal, ChevronDown, ChevronUp, Activity, Lock, Sparkles } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
 import { HistoryRecord } from '../types';
 import { uploadToOSS } from '../services/ossService';
+import { mockBackend } from '../services/mockBackend';
+import { optimizePrompt as clientSideOptimize } from '../services/geminiService';
 
 const CONFIG_FILES = [
   'configs/diffusion/inference/256px.py',
@@ -25,7 +27,7 @@ interface TaskLog {
 
 const VideoTool: React.FC = () => {
   const { t } = useLanguage();
-  const { isConnected, sendCommand, lastMessage, serverUrl, setServerUrl } = useSocket();
+  const { isConnected, isConnecting, connect, disconnect, sendCommand, lastMessage, serverUrl, setServerUrl } = useSocket();
   const { user } = useAuth();
   
   const [prompt, setPrompt] = useState('A futuristic landscape with flying vehicles and neon structures');
@@ -39,6 +41,7 @@ const VideoTool: React.FC = () => {
   const [refImage, setRefImage] = useState<string | null>(null);
   const [refImageUrl, setRefImageUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isOptimizing, setIsOptimizing] = useState(false);
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
@@ -62,6 +65,15 @@ const VideoTool: React.FC = () => {
     }
   }, [refImage]);
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (isGenerating) {
+        disconnect();
+      }
+    };
+  }, [isGenerating, disconnect]);
+
   useEffect(() => {
     if (lastMessage) {
       try {
@@ -83,16 +95,40 @@ const VideoTool: React.FC = () => {
             };
             const existingHistory = JSON.parse(localStorage.getItem('ccioi_video_history') || '[]');
             localStorage.setItem('ccioi_video_history', JSON.stringify([newRecord, ...existingHistory]));
+            
+            // Task finished, disconnect WS to save resources
+            disconnect();
           } else {
             setIsGenerating(false);
             alert('Generation failed. Please check the logs.');
+            disconnect();
           }
         }
       } catch (e) {
         console.error('Error parsing WebSocket message', e);
       }
     }
-  }, [lastMessage]);
+  }, [lastMessage, prompt, configFile, condType, numSteps, numFrames, fps, motionScore, disconnect]);
+
+  const handleOptimize = async () => {
+    if (!prompt.trim() || isOptimizing) return;
+    setIsOptimizing(true);
+    try {
+      const optimized = await mockBackend.optimizePrompt('VIDEO', prompt, user?.token);
+      setPrompt(optimized);
+    } catch (error) {
+      console.warn("Backend optimization failed, falling back to client-side Gemini...", error);
+      try {
+        const optimized = await clientSideOptimize(prompt, 'VIDEO');
+        setPrompt(optimized);
+      } catch (fallbackError) {
+        console.error("All optimization attempts failed", fallbackError);
+        alert("AI optimization failed. Please check your network connection.");
+      }
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!user) {
@@ -117,13 +153,9 @@ const VideoTool: React.FC = () => {
     }
   };
 
-  const handleDispatch = () => {
+  const handleDispatch = async () => {
     if (!user) {
       alert("Please login to generate video.");
-      return;
-    }
-    if (!isConnected) {
-      alert("Socket server not connected.");
       return;
     }
     if (isUploading) {
@@ -134,24 +166,38 @@ const VideoTool: React.FC = () => {
     setIsGenerating(true);
     setGeneratedVideoUrl(null);
     setLogs([]);
-    const sanitizedPrompt = prompt.replace(/"/g, '\\"');
-    sendCommand({
-      type: 'TASK_EXECUTION',
-      task: 'VIDEO_GENERATION',
-      token: user.token,
-      timestamp: new Date().toISOString(),
-      parameters: {
-        prompt: sanitizedPrompt, 
-        config: configFile, 
-        cond: condType, 
-        steps: numSteps, 
-        frames: numFrames, 
-        ratio: aspectRatio, 
-        fps: fps,
-        motion_score: motionScore,
-        ref_image: refImageUrl 
+
+    try {
+      // Step 1: Establish connection only when needed
+      if (!isConnected) {
+        await connect();
       }
-    });
+
+      // Step 2: Dispatch the task
+      const sanitizedPrompt = prompt.replace(/"/g, '\\"');
+      sendCommand({
+        type: 'TASK_EXECUTION',
+        task: 'VIDEO_GENERATION',
+        token: user.token,
+        timestamp: new Date().toISOString(),
+        parameters: {
+          prompt: sanitizedPrompt, 
+          config: configFile, 
+          cond: condType, 
+          steps: numSteps, 
+          frames: numFrames, 
+          ratio: aspectRatio, 
+          fps: fps,
+          motion_score: motionScore,
+          ref_image: refImageUrl 
+        }
+      });
+    } catch (err) {
+      console.error("Dispatch failed", err);
+      alert("Failed to connect to CCIOI Bridge. Please try again.");
+      setIsGenerating(false);
+      disconnect();
+    }
   };
 
   return (
@@ -163,9 +209,9 @@ const VideoTool: React.FC = () => {
             <h2 className="text-lg font-bold flex items-center gap-2 text-cyan-400">
               <Cpu className="w-4 h-4" /> {t('tool.video.title')}
             </h2>
-            <div className={`px-2 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-1.5 ${isConnected ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+            <div className={`px-2 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-1.5 ${isConnected ? 'bg-green-500/20 text-green-400' : 'bg-app-subtext/20 text-app-subtext'}`}>
               {isConnected ? <Wifi size={10} /> : <WifiOff size={10} />}
-              {isConnected ? t('socket.connected') : t('socket.disconnected')}
+              {isConnecting ? 'Connecting...' : isConnected ? t('socket.connected') : 'Bridge Offline'}
             </div>
           </div>
 
@@ -183,12 +229,29 @@ const VideoTool: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-app-subtext uppercase tracking-widest mb-1.5">{t('tool.video.prompt')}</label>
-              <textarea
-                value={prompt} onChange={(e) => setPrompt(e.target.value)}
-                className="w-full bg-app-surface border border-app-border rounded-xl p-2.5 text-app-text text-xs h-20 outline-none focus:border-cyan-500 transition-colors resize-none"
-                placeholder="Describe sequence..."
-              />
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-[10px] font-bold text-app-subtext uppercase tracking-widest">{t('tool.video.prompt')}</label>
+                <button
+                  onClick={handleOptimize}
+                  disabled={!prompt.trim() || isOptimizing}
+                  className="flex items-center gap-1.5 text-[9px] font-bold text-cyan-400 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed uppercase"
+                >
+                  {isOptimizing ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                  Optimize
+                </button>
+              </div>
+              <div className="relative">
+                <textarea
+                  value={prompt} onChange={(e) => setPrompt(e.target.value)}
+                  className="w-full bg-app-surface border border-app-border rounded-xl p-2.5 text-app-text text-xs h-20 outline-none focus:border-cyan-500 transition-colors resize-none"
+                  placeholder="Describe sequence..."
+                />
+                {isOptimizing && (
+                  <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] rounded-xl flex items-center justify-center">
+                    <Loader2 size={16} className="text-cyan-400 animate-spin" />
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -252,8 +315,8 @@ const VideoTool: React.FC = () => {
                 : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-cyan-900/30'
               }`}
             >
-              {isGenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : !user ? <Lock className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-              {!user ? 'Login Required' : isGenerating ? 'Processing' : t('tool.video.generate')}
+              {isGenerating || isConnecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : !user ? <Lock className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+              {!user ? 'Login Required' : isConnecting ? 'Connecting...' : isGenerating ? 'Processing' : t('tool.video.generate')}
             </button>
           </div>
         </div>
@@ -263,7 +326,7 @@ const VideoTool: React.FC = () => {
       <div className="flex-1 flex flex-col gap-6 min-h-0 h-full overflow-hidden">
         <div className="bg-app-surface/30 rounded-3xl border border-app-border flex-1 flex flex-col items-center justify-center relative overflow-hidden group/preview p-0 bg-black/60 min-h-0">
           
-          {isGenerating && (
+          {(isGenerating || isConnecting) && (
             <div className="absolute inset-0 z-[60] bg-app-base/95 backdrop-blur-md flex flex-col animate-fade-in">
               <div className="p-8 flex flex-col items-center justify-center gap-4 text-center shrink-0">
                 <div className="relative">
@@ -271,8 +334,12 @@ const VideoTool: React.FC = () => {
                   <Video className="absolute inset-0 m-auto text-cyan-400 animate-pulse" size={24} />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="text-xl font-bold text-app-text">Generating Sequence</h3>
-                  <p className="text-app-subtext text-[10px] uppercase tracking-widest opacity-60">Node: CLUSTER_EDGE_PRO</p>
+                  <h3 className="text-xl font-bold text-app-text">
+                    {isConnecting ? 'Establishing Bridge' : 'Generating Sequence'}
+                  </h3>
+                  <p className="text-app-subtext text-[10px] uppercase tracking-widest opacity-60">
+                    {isConnecting ? 'Waking up GPU Cluster...' : 'Node: CLUSTER_EDGE_PRO'}
+                  </p>
                 </div>
               </div>
 
@@ -309,14 +376,14 @@ const VideoTool: React.FC = () => {
               />
               <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity flex gap-3 z-30">
                 <a href={generatedVideoUrl} download target="_blank" rel="noopener noreferrer" className="p-2.5 bg-black/80 hover:bg-app-accent rounded-full text-white transition-all shadow-xl"><Download size={20} /></a>
-                <button onClick={() => setGeneratedVideoUrl(null)} className="p-2.5 bg-red-600/80 hover:bg-red-500 rounded-full text-white transition-all shadow-xl"><Trash2 size={20} /></button>
+                <button onClick={() => { setGeneratedVideoUrl(null); disconnect(); }} className="p-2.5 bg-red-600/80 hover:bg-red-500 rounded-full text-white transition-all shadow-xl"><Trash2 size={20} /></button>
               </div>
             </div>
-          ) : !isGenerating && (
+          ) : !isGenerating && !isConnecting && (
             <div className="max-w-md space-y-8 animate-fade-in text-center p-8">
               <div className="w-20 h-20 bg-cyan-500/10 rounded-full flex items-center justify-center mx-auto relative"><Video size={40} className="text-cyan-400" /></div>
               <div className="space-y-4"><h3 className="text-2xl font-bold text-app-text tracking-tight">CCIOI Task Bridge</h3><p className="text-app-subtext text-xs leading-relaxed">Ready for high-fidelity video production. Set your technical parameters on the left and dispatch the job.</p></div>
-              {isConnected && <div className="flex items-center justify-center gap-2 text-[9px] text-green-400 font-bold uppercase tracking-[0.2em] bg-green-500/10 py-2.5 rounded-full border border-green-500/20"><CheckCircle2 size={10} />Bridge Link Active</div>}
+              <div className="flex items-center justify-center gap-2 text-[9px] text-app-subtext font-bold uppercase tracking-[0.2em] bg-app-surface/40 py-2.5 px-6 rounded-full border border-app-border">Bridge Session Standby</div>
             </div>
           )}
         </div>
@@ -325,7 +392,7 @@ const VideoTool: React.FC = () => {
            <div className="w-12 h-12 bg-app-accent/20 rounded-2xl flex items-center justify-center text-app-accent shrink-0"><Globe size={24} /></div>
            <div className="min-w-0">
              <p className="text-sm font-bold text-app-text truncate">Cluster Dispatch Interface</p>
-             <p className="text-[10px] text-app-subtext leading-relaxed mt-0.5 opacity-60">Neural rendering is handled by CCIOI distributed GPU nodes. Stream updates via WebSocket.</p>
+             <p className="text-[10px] text-app-subtext leading-relaxed mt-0.5 opacity-60">Neural rendering is handled by CCIOI distributed GPU nodes. WebSocket session is established per task.</p>
            </div>
         </div>
       </div>

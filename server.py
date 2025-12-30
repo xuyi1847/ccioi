@@ -495,3 +495,68 @@ async def frontend_ws(ws: WebSocket):
         print("❌ Frontend disconnected")
     except Exception as e:
         print("🔥 Frontend WS error:", e)
+
+from pydantic import BaseModel
+from typing import Literal, Optional
+from fastapi import Header, HTTPException
+import asyncio
+
+from optimizedprompt import refine_prompts
+
+
+class OptimizePromptReq(BaseModel):
+    type: Literal["VIDEO", "IMAGE"]
+    prompt: str
+
+
+@app.post("/optimizePrompt")
+async def optimize_prompt(
+    req: OptimizePromptReq,
+    authorization: Optional[str] = Header(None),
+):
+    raw_prompt = req.prompt.strip()
+    if not raw_prompt:
+        raise HTTPException(status_code=400, detail="Prompt cannot be empty")
+
+    # JWT 可选
+    user_id = None
+    if authorization:
+        if not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Invalid auth header")
+        token = authorization.replace("Bearer ", "").strip()
+        payload = parse_jwt(token)
+        user_id = payload.get("sub")
+
+    loop = asyncio.get_running_loop()
+
+    try:
+        # ⚠️ 注意：refine_prompts 是阻塞函数，必须进线程池
+        if req.type == "VIDEO":
+            result = await loop.run_in_executor(
+                None,
+                lambda: refine_prompts(
+                    [raw_prompt],     # ✅ 必须是 list
+                    type="t2v"
+                )
+            )
+        elif req.type == "IMAGE":
+            result = await loop.run_in_executor(
+                None,
+                lambda: refine_prompts(
+                    [raw_prompt],
+                    type="t2i"
+                )
+            )
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported optimize type")
+
+        # refine_prompts 返回的是 list
+        optimized_prompt = result[0] if result else raw_prompt
+
+        return {
+            "optimized_prompt": optimized_prompt
+        }
+
+    except Exception as e:
+        print("🔥 optimizePrompt failed:", e)
+        raise HTTPException(status_code=500, detail=str(e))

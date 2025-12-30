@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
-import { Image as ImageIcon, Loader2, Download, RefreshCw, Lock } from 'lucide-react';
-import { generateImage } from '../services/geminiService';
+import { Image as ImageIcon, Loader2, Download, RefreshCw, Lock, Sparkles } from 'lucide-react';
+import { generateImage, optimizePrompt as clientSideOptimize } from '../services/geminiService';
+import { mockBackend } from '../services/mockBackend';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 
@@ -12,6 +13,29 @@ const ImageTool: React.FC = () => {
   const [aspectRatio, setAspectRatio] = useState('1:1');
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isOptimizing, setIsOptimizing] = useState(false);
+
+  const handleOptimize = async () => {
+    if (!prompt.trim() || isOptimizing) return;
+    setIsOptimizing(true);
+    try {
+      // Try backend first
+      const optimized = await mockBackend.optimizePrompt('IMAGE', prompt, user?.token);
+      setPrompt(optimized);
+    } catch (error) {
+      console.warn("Backend optimization failed, falling back to client-side Gemini...", error);
+      try {
+        // Fallback to client-side Gemini SDK if backend fetch fails
+        const optimized = await clientSideOptimize(prompt, 'IMAGE');
+        setPrompt(optimized);
+      } catch (fallbackError) {
+        console.error("All optimization attempts failed", fallbackError);
+        alert("AI optimization failed. Please check your network connection.");
+      }
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
 
   const handleGenerate = async () => {
     if (!user) {
@@ -37,20 +61,38 @@ const ImageTool: React.FC = () => {
       {/* Controls */}
       <div className="lg:col-span-1 flex flex-col gap-6 overflow-y-auto custom-scrollbar">
         <div className="bg-app-surface/50 p-6 rounded-2xl border border-app-border shadow-xl">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-purple-400">
-            <ImageIcon className="w-5 h-5" />
-            {t('tool.image.title')}
+          <h2 className="text-xl font-semibold mb-4 flex items-center justify-between text-purple-400">
+            <span className="flex items-center gap-2">
+              <ImageIcon className="w-5 h-5" />
+              {t('tool.image.title')}
+            </span>
+            <button
+              onClick={handleOptimize}
+              disabled={!prompt.trim() || isOptimizing}
+              className="p-2 rounded-lg bg-app-surface-hover text-app-accent hover:text-white hover:bg-app-accent transition-all disabled:opacity-30 disabled:cursor-not-allowed group"
+              title="AI Optimize Prompt"
+            >
+              {isOptimizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 group-hover:scale-110 transition-transform" />}
+            </button>
           </h2>
           
           <div className="space-y-4">
-            <div>
+            <div className="relative">
               <label className="block text-sm font-medium text-app-subtext mb-2">{t('tool.image.prompt')}</label>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder={t('tool.image.placeholder')}
-                className="w-full bg-app-surface-hover border border-app-border rounded-xl p-3 text-app-text h-32 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none resize-none"
+                className="w-full bg-app-surface-hover border border-app-border rounded-xl p-3 text-app-text h-32 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none resize-none transition-all"
               />
+              {isOptimizing && (
+                <div className="absolute inset-0 bg-app-surface/40 backdrop-blur-[1px] flex items-center justify-center rounded-xl pointer-events-none">
+                  <div className="flex items-center gap-2 text-app-accent font-bold text-xs">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Optimizing...
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>

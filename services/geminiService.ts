@@ -47,6 +47,27 @@ export const streamChat = async (
   }
 };
 
+// --- Prompt Optimization ---
+export const optimizePrompt = async (prompt: string, type: 'IMAGE' | 'VIDEO' = 'IMAGE'): Promise<string> => {
+  const ai = createAIClient();
+  const systemInstruction = `You are a professional prompt engineer for AI ${type === 'IMAGE' ? 'image' : 'video'} generation models like Midjourney, Stable Diffusion, or Veo. 
+  Your task is to take a simple user prompt and expand it into a high-fidelity, detailed, and artistic prompt. 
+  Focus on lighting, camera angles, textures, artistic style, and atmosphere. 
+  Keep the response concise—only the optimized prompt itself. 
+  Do not include any conversational text or explanations.`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: `Optimize this prompt for high-quality ${type} generation: "${prompt}"`,
+    config: {
+      systemInstruction: systemInstruction,
+      temperature: 0.8,
+    },
+  });
+
+  return response.text?.trim() || prompt;
+};
+
 // --- Image Generation ---
 export const generateImage = async (prompt: string, aspectRatio: string = "1:1"): Promise<string> => {
   const ai = createAIClient();
