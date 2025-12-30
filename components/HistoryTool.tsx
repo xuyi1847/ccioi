@@ -25,7 +25,7 @@ const HistoryTool: React.FC = () => {
     setError(null);
     try {
       const data = await mockBackend.getHistory(user.token);
-      setHistory(data.sort((a, b) => b.timestamp - a.timestamp));
+      setHistory(Array.isArray(data) ? data.sort((a, b) => b.timestamp - a.timestamp) : []);
     } catch (e: any) {
       console.error('Error loading history', e);
       setError(e.message || 'Failed to load history');
@@ -61,7 +61,7 @@ const HistoryTool: React.FC = () => {
   }
 
   return (
-    <div className="h-full flex flex-col gap-6 animate-fade-in overflow-hidden">
+    <div className="h-full flex flex-col gap-6 animate-fade-in overflow-hidden flex-1">
       <div className="flex items-center justify-between shrink-0">
         <div>
           <h2 className="text-2xl font-bold text-app-text flex items-center gap-3">
@@ -101,10 +101,10 @@ const HistoryTool: React.FC = () => {
           <p className="text-app-subtext max-w-xs">{t('tool.history.empty')}</p>
         </div>
       ) : (
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 overflow-y-auto pr-2 custom-scrollbar pb-12">
+        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 overflow-y-auto pr-2 custom-scrollbar pb-12 min-h-0">
           {history.map((item) => (
             <div key={item.id} className="group bg-app-surface/60 rounded-3xl border border-app-border overflow-hidden hover:border-app-accent/50 transition-all flex flex-col shadow-xl">
-              <div className="aspect-[9/16] bg-black/40 relative flex items-center justify-center overflow-hidden">
+              <div className="aspect-[9/16] bg-black/40 relative flex items-center justify-center overflow-hidden shrink-0">
                 <video 
                   src={item.url} 
                   className="w-full h-full object-contain opacity-80 group-hover:opacity-100 transition-opacity" 
@@ -143,7 +143,7 @@ const HistoryTool: React.FC = () => {
 
                 <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none">
                   <div className="flex items-center gap-2 text-[10px] text-app-accent font-bold uppercase tracking-wider mb-1">
-                    <Video size={10} /> {item.type.toUpperCase()}
+                    <Video size={10} /> {item.type ? item.type.toUpperCase() : 'UNKNOWN'}
                   </div>
                   <div className="text-[10px] text-white/60 font-mono flex items-center gap-1.5">
                     <Calendar size={10} /> {formatDate(item.timestamp)}

@@ -59,7 +59,6 @@ const ChatTool: React.FC = () => {
     setIsLoading(true);
 
     const modelMsgId = (Date.now() + 1).toString();
-    // Start with empty content to facilitate typewriter effect
     setMessages(prev => [...prev, {
       id: modelMsgId,
       role: 'model',
@@ -94,7 +93,7 @@ const ChatTool: React.FC = () => {
   return (
     <div className="flex flex-col h-full bg-app-surface/50 rounded-2xl border border-app-border overflow-hidden shadow-2xl min-h-0 flex-1">
       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar" ref={scrollRef}>
-        {messages.map((msg) => (
+        {messages.map((msg, idx) => (
           <div
             key={msg.id}
             className={`flex items-start gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''} animate-fade-in`}
@@ -111,7 +110,7 @@ const ChatTool: React.FC = () => {
             }`}>
               <div className="prose prose-sm prose-invert max-w-none">
                 <ReactMarkdown>
-                  {msg.content || (msg.role === 'model' && isLoading && messages[messages.length-1].id === msg.id ? '▌' : '')}
+                  {msg.content + (isLoading && idx === messages.length - 1 && msg.role === 'model' ? ' ▌' : '')}
                 </ReactMarkdown>
               </div>
             </div>
@@ -122,8 +121,9 @@ const ChatTool: React.FC = () => {
              <div className="w-8 h-8 rounded-full bg-app-accent flex items-center justify-center shrink-0">
                <Bot size={18} className="text-white" />
              </div>
-             <div className="bg-app-surface-hover text-app-text p-3 rounded-2xl rounded-tl-none">
-               <Loader2 className="animate-spin w-4 h-4" />
+             <div className="bg-app-surface-hover text-app-text p-3 rounded-2xl rounded-tl-none flex items-center gap-2">
+               <span className="text-xs animate-pulse">Thinking</span>
+               <Loader2 className="animate-spin w-3 h-3" />
              </div>
            </div>
         )}
