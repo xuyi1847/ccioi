@@ -25,7 +25,21 @@ const HistoryTool: React.FC = () => {
     setError(null);
     try {
       const data = await mockBackend.getHistory(user.token);
-      setHistory(Array.isArray(data) ? data.sort((a, b) => b.timestamp - a.timestamp) : []);
+      
+      // 映射后端字段到前端格式
+      // 后端: { video_url, created_at, id, prompt }
+      // 前端: { url, timestamp, id, prompt, type }
+      const mappedData: HistoryRecord[] = (data as any[]).map(item => ({
+        id: item.id,
+        prompt: item.prompt,
+        url: item.video_url || item.url, // 兼容两个可能的字段名
+        // 后端返回的是秒，转为毫秒
+        timestamp: item.created_at ? item.created_at * 1000 : (item.timestamp || Date.now()),
+        type: item.video_url ? 'video' : (item.type || 'video'),
+        params: item.params || {}
+      }));
+
+      setHistory(mappedData.sort((a, b) => b.timestamp - a.timestamp));
     } catch (e: any) {
       console.error('Error loading history', e);
       setError(e.message || 'Failed to load history');
@@ -36,6 +50,7 @@ const HistoryTool: React.FC = () => {
 
   const deleteItem = async (id: string) => {
     if (!user) return;
+    if (!confirm(t('tool.history.clear') + '?')) return;
     try {
       await mockBackend.deleteHistoryItem(user.token, id);
       setHistory(prev => prev.filter(item => item.id !== id));
@@ -45,7 +60,9 @@ const HistoryTool: React.FC = () => {
   };
 
   const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleString();
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return 'N/A';
+    return date.toLocaleString();
   };
 
   if (!user) {
@@ -104,10 +121,11 @@ const HistoryTool: React.FC = () => {
         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 overflow-y-auto pr-2 custom-scrollbar pb-12 min-h-0">
           {history.map((item) => (
             <div key={item.id} className="group bg-app-surface/60 rounded-3xl border border-app-border overflow-hidden hover:border-app-accent/50 transition-all flex flex-col shadow-xl">
-              <div className="aspect-[9/16] bg-black/40 relative flex items-center justify-center overflow-hidden shrink-0">
+              <div className="aspect-[9/16] bg-black relative flex items-center justify-center overflow-hidden shrink-0">
                 <video 
                   src={item.url} 
-                  className="w-full h-full object-contain opacity-80 group-hover:opacity-100 transition-opacity" 
+                  className="w-full h-full object-contain opacity-90 group-hover:opacity-100 transition-opacity" 
+                  controls={false}
                   muted 
                   playsInline 
                   onMouseEnter={(e) => (e.target as HTMLVideoElement).play()}
@@ -141,9 +159,9 @@ const HistoryTool: React.FC = () => {
                    </div>
                 </div>
 
-                <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none">
+                <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black via-black/40 to-transparent pointer-events-none">
                   <div className="flex items-center gap-2 text-[10px] text-app-accent font-bold uppercase tracking-wider mb-1">
-                    <Video size={10} /> {item.type ? item.type.toUpperCase() : 'UNKNOWN'}
+                    <Video size={10} /> {item.type ? item.type.toUpperCase() : 'VIDEO'}
                   </div>
                   <div className="text-[10px] text-white/60 font-mono flex items-center gap-1.5">
                     <Calendar size={10} /> {formatDate(item.timestamp)}
@@ -152,7 +170,7 @@ const HistoryTool: React.FC = () => {
               </div>
 
               <div className="p-5 flex-1 flex flex-col bg-app-surface/40">
-                <p className="text-sm text-app-text font-medium line-clamp-2 mb-4 flex-1">
+                <p className="text-sm text-app-text font-medium line-clamp-3 mb-4 flex-1">
                   {item.prompt}
                 </p>
                 
