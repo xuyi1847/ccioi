@@ -74,47 +74,49 @@ const AppContent: React.FC = () => {
       case AppView.TEXT_ANALYSIS: return <TextTool />;
       case AppView.HISTORY: return <HistoryTool />;
       default: return (
-        <div className="flex flex-col items-center gap-8 md:gap-16 py-4 md:py-8">
-          <div className="text-center space-y-3 md:space-y-6 animate-fade-in-up px-4">
-             <h1 className="text-2xl md:text-6xl font-bold text-app-text tracking-tight">
-               {t('app.welcome')} <span className="text-app-accent">CCIOI.com</span>
-             </h1>
-             <p className="text-app-subtext max-w-2xl mx-auto text-sm md:text-lg leading-relaxed">{t('app.subtitle')}</p>
-          </div>
-          
-          <div className="w-full max-w-6xl px-4">
-            <h2 className="text-[10px] md:text-sm font-bold text-app-subtext uppercase tracking-[0.3em] mb-4 md:mb-8 text-center">{t('app.modules')}</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
-              {tools.slice(0, 5).map((tool) => (
-                <button key={tool.id} onClick={() => setCurrentView(tool.id)} className="group bg-app-surface/40 hover:bg-app-surface border border-app-border p-4 md:p-6 rounded-2xl md:rounded-3xl transition-all hover:-translate-y-1 hover:border-app-accent/30 text-center relative overflow-hidden backdrop-blur-sm">
-                  <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-app-base flex items-center justify-center mx-auto mb-3 md:mb-4 ${tool.color} group-hover:scale-110 transition-transform`}><tool.icon size={20} /></div>
-                  <h3 className="text-base md:text-lg font-bold text-app-text mb-1">{tool.name}</h3>
-                  <p className="text-app-subtext text-[10px] md:text-xs line-clamp-1">{tool.description}</p>
-                </button>
-              ))}
+        <div className="flex-1 overflow-y-auto custom-scrollbar w-full">
+          <div className="flex flex-col items-center gap-8 md:gap-16 py-4 md:py-8">
+            <div className="text-center space-y-3 md:space-y-6 animate-fade-in-up px-4">
+               <h1 className="text-2xl md:text-6xl font-bold text-app-text tracking-tight">
+                 {t('app.welcome')} <span className="text-app-accent">CCIOI.com</span>
+               </h1>
+               <p className="text-app-subtext max-w-2xl mx-auto text-sm md:text-lg leading-relaxed">{t('app.subtitle')}</p>
             </div>
-          </div>
+            
+            <div className="w-full max-w-6xl px-4">
+              <h2 className="text-[10px] md:text-sm font-bold text-app-subtext uppercase tracking-[0.3em] mb-4 md:mb-8 text-center">{t('app.modules')}</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
+                {tools.slice(0, 5).map((tool) => (
+                  <button key={tool.id} onClick={() => setCurrentView(tool.id)} className="group bg-app-surface/40 hover:bg-app-surface border border-app-border p-4 md:p-6 rounded-2xl md:rounded-3xl transition-all hover:-translate-y-1 hover:border-app-accent/30 text-center relative overflow-hidden backdrop-blur-sm">
+                    <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-app-base flex items-center justify-center mx-auto mb-3 md:mb-4 ${tool.color} group-hover:scale-110 transition-transform`}><tool.icon size={20} /></div>
+                    <h3 className="text-base md:text-lg font-bold text-app-text mb-1">{tool.name}</h3>
+                    <p className="text-app-subtext text-[10px] md:text-xs line-clamp-1">{tool.description}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
 
-          <div className="w-full max-w-6xl px-4 pb-8 md:pb-12">
-            <div className="flex items-center justify-between mb-6 md:mb-8">
-               <h2 className="text-lg md:text-xl font-bold text-app-text flex items-center gap-2 md:gap-3"><Sparkles className="text-app-accent w-5 h-5 md:w-6 md:h-6" />AI Studio Showcase</h2>
-               <div className="h-[1px] flex-1 bg-gradient-to-r from-app-border to-transparent ml-4 md:ml-6" />
+            <div className="w-full max-w-6xl px-4 pb-8 md:pb-12">
+              <div className="flex items-center justify-between mb-6 md:mb-8">
+                 <h2 className="text-lg md:text-xl font-bold text-app-text flex items-center gap-2 md:gap-3"><Sparkles className="text-app-accent w-5 h-5 md:w-6 md:h-6" />AI Studio Showcase</h2>
+                 <div className="h-[1px] flex-1 bg-gradient-to-r from-app-border to-transparent ml-4 md:ml-6" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+                 {demoVideos.map((video) => (
+                   <div key={video.id} className="relative group aspect-[9/16] bg-app-surface rounded-2xl md:rounded-3xl border border-app-border overflow-hidden shadow-2xl transition-all hover:scale-[1.02] hover:border-app-accent/50">
+                      <video src={video.url} className="w-full h-full object-cover" autoPlay muted loop playsInline />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-4">
+                         <span className="text-[10px] text-app-accent font-mono uppercase tracking-widest mb-1">Generated by CCIOI</span>
+                         <p className="text-white text-sm font-bold">{video.label}</p>
+                      </div>
+                      <div className="absolute top-3 left-3 px-2 py-1 bg-black/30 backdrop-blur-md rounded-full border border-white/10 flex items-center gap-1.5"><Play size={8} className="fill-white text-white" /><span className="text-[9px] font-bold text-white uppercase tracking-tighter">Demo</span></div>
+                   </div>
+                 ))}
+                 <div className="hidden sm:flex flex-col items-center justify-center aspect-[9/16] bg-app-surface/20 border-2 border-dashed border-app-border rounded-2xl md:rounded-3xl text-app-subtext gap-3 p-6 text-center"><div className="w-12 h-12 rounded-full border border-app-border flex items-center justify-center"><Sparkles size={20} className="opacity-20" /></div><p className="text-xs">Your creation could be here. Start generating today.</p></div>
+                 <div className="hidden sm:flex flex-col items-center justify-center aspect-[9/16] bg-app-surface/20 border-2 border-dashed border-app-border rounded-2xl md:rounded-3xl text-app-subtext gap-3 p-6 text-center"><div className="w-12 h-12 rounded-full border border-app-border flex items-center justify-center"><Video size={20} className="opacity-20" /></div><p className="text-xs text-balance">High-fidelity 9:16 portrait video production.</p></div>
+              </div>
+              <div className="mt-16 pt-8 border-t border-app-border text-center"><p className="text-xs text-app-subtext font-mono uppercase tracking-widest opacity-60">&copy; 2025 CCIOI.com // {t('app.icp')}</p></div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-               {demoVideos.map((video) => (
-                 <div key={video.id} className="relative group aspect-[9/16] bg-app-surface rounded-2xl md:rounded-3xl border border-app-border overflow-hidden shadow-2xl transition-all hover:scale-[1.02] hover:border-app-accent/50">
-                    <video src={video.url} className="w-full h-full object-cover" autoPlay muted loop playsInline />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-4">
-                       <span className="text-[10px] text-app-accent font-mono uppercase tracking-widest mb-1">Generated by CCIOI</span>
-                       <p className="text-white text-sm font-bold">{video.label}</p>
-                    </div>
-                    <div className="absolute top-3 left-3 px-2 py-1 bg-black/30 backdrop-blur-md rounded-full border border-white/10 flex items-center gap-1.5"><Play size={8} className="fill-white text-white" /><span className="text-[9px] font-bold text-white uppercase tracking-tighter">Demo</span></div>
-                 </div>
-               ))}
-               <div className="hidden sm:flex flex-col items-center justify-center aspect-[9/16] bg-app-surface/20 border-2 border-dashed border-app-border rounded-2xl md:rounded-3xl text-app-subtext gap-3 p-6 text-center"><div className="w-12 h-12 rounded-full border border-app-border flex items-center justify-center"><Sparkles size={20} className="opacity-20" /></div><p className="text-xs">Your creation could be here. Start generating today.</p></div>
-               <div className="hidden sm:flex flex-col items-center justify-center aspect-[9/16] bg-app-surface/20 border-2 border-dashed border-app-border rounded-2xl md:rounded-3xl text-app-subtext gap-3 p-6 text-center"><div className="w-12 h-12 rounded-full border border-app-border flex items-center justify-center"><Video size={20} className="opacity-20" /></div><p className="text-xs text-balance">High-fidelity 9:16 portrait video production.</p></div>
-            </div>
-            <div className="mt-16 pt-8 border-t border-app-border text-center"><p className="text-xs text-app-subtext font-mono uppercase tracking-widest opacity-60">&copy; 2025 CCIOI.com // {t('app.icp')}</p></div>
           </div>
         </div>
       );
@@ -122,7 +124,7 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-app-base text-app-text flex overflow-hidden transition-colors duration-500">
+    <div className="h-screen bg-app-base text-app-text flex overflow-hidden transition-colors duration-500">
       {showIntro && (
         <div className="fixed inset-0 z-[100] bg-app-base flex flex-col items-center justify-center overflow-hidden">
           <div className="absolute inset-0 bg-grid opacity-20 pointer-events-none animate-pulse" /><div className="absolute inset-0 bg-gradient-to-t from-app-base via-transparent to-transparent z-0" />
@@ -157,9 +159,11 @@ const AppContent: React.FC = () => {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto overflow-x-hidden relative p-4 lg:p-6 scroll-smooth">
+        <div className="flex-1 flex flex-col min-h-0 relative p-4 lg:p-6 overflow-hidden">
            <div className="fixed inset-0 overflow-hidden pointer-events-none z-0"><div className="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] bg-app-accent/5 rounded-full blur-[100px]" /><div className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] bg-app-surface-hover/20 rounded-full blur-[100px]" /></div>
-           <div className="relative z-10 max-w-7xl mx-auto min-h-full">{renderContent()}</div>
+           <div className="relative z-10 max-w-7xl mx-auto w-full h-full flex flex-col min-h-0">
+             {renderContent()}
+           </div>
         </div>
       </main>
 

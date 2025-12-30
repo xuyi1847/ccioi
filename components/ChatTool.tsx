@@ -59,6 +59,7 @@ const ChatTool: React.FC = () => {
     setIsLoading(true);
 
     const modelMsgId = (Date.now() + 1).toString();
+    // Start with empty content to facilitate typewriter effect
     setMessages(prev => [...prev, {
       id: modelMsgId,
       role: 'model',
@@ -82,24 +83,21 @@ const ChatTool: React.FC = () => {
       });
 
     } catch (err) {
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        role: 'model',
-        content: "Sorry, I encountered an error. Please try again.",
-        timestamp: Date.now()
-      }]);
+      setMessages(prev => prev.map(m => 
+        m.id === modelMsgId ? { ...m, content: "Sorry, I encountered an error. Please try again." } : m
+      ));
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="flex flex-col h-full bg-app-surface/50 rounded-2xl border border-app-border overflow-hidden shadow-2xl">
-      <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={scrollRef}>
+    <div className="flex flex-col h-full bg-app-surface/50 rounded-2xl border border-app-border overflow-hidden shadow-2xl min-h-0 flex-1">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar" ref={scrollRef}>
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`flex items-start gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
+            className={`flex items-start gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''} animate-fade-in`}
           >
             <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
               msg.role === 'model' ? 'bg-app-accent' : 'bg-app-surface-hover'
@@ -111,7 +109,11 @@ const ChatTool: React.FC = () => {
                 ? 'bg-app-surface-hover text-app-text rounded-tl-none' 
                 : 'bg-app-accent text-white rounded-tr-none'
             }`}>
-              <ReactMarkdown>{msg.content}</ReactMarkdown>
+              <div className="prose prose-sm prose-invert max-w-none">
+                <ReactMarkdown>
+                  {msg.content || (msg.role === 'model' && isLoading && messages[messages.length-1].id === msg.id ? '▌' : '')}
+                </ReactMarkdown>
+              </div>
             </div>
           </div>
         ))}
@@ -127,7 +129,7 @@ const ChatTool: React.FC = () => {
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className="p-4 bg-app-surface border-t border-app-border">
+      <form onSubmit={handleSubmit} className="p-4 bg-app-surface border-t border-app-border shrink-0">
         <div className="flex gap-2 relative">
           {!user && (
             <div className="absolute inset-0 bg-app-surface/60 backdrop-blur-sm z-10 flex items-center justify-center rounded-xl cursor-not-allowed">

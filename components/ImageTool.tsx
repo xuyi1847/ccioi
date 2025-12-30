@@ -33,9 +33,9 @@ const ImageTool: React.FC = () => {
   };
 
   return (
-    <div className="h-full grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="h-full grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
       {/* Controls */}
-      <div className="lg:col-span-1 flex flex-col gap-6">
+      <div className="lg:col-span-1 flex flex-col gap-6 overflow-y-auto custom-scrollbar">
         <div className="bg-app-surface/50 p-6 rounded-2xl border border-app-border shadow-xl">
           <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-purple-400">
             <ImageIcon className="w-5 h-5" />
@@ -100,7 +100,7 @@ const ImageTool: React.FC = () => {
       </div>
 
       {/* Preview */}
-      <div className="lg:col-span-2 bg-app-base rounded-2xl border border-app-border flex items-center justify-center p-4 relative overflow-hidden">
+      <div className="lg:col-span-2 bg-app-base rounded-2xl border border-app-border flex items-center justify-center p-4 relative overflow-hidden min-h-0">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-purple-900/10 via-app-base to-app-base pointer-events-none" />
         
         {isGenerating ? (
@@ -109,11 +109,11 @@ const ImageTool: React.FC = () => {
             <p>{t('pay.processing')}</p>
           </div>
         ) : resultImage ? (
-          <div className="relative group max-w-full max-h-full">
+          <div className="relative group max-w-full max-h-full flex items-center justify-center">
             <img 
               src={resultImage} 
               alt="Generated" 
-              className="rounded-lg shadow-2xl max-w-full max-h-[70vh] object-contain border border-app-border"
+              className="rounded-lg shadow-2xl max-w-full max-h-full object-contain border border-app-border"
             />
             <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
               <a 

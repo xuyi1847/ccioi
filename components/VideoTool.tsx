@@ -155,9 +155,9 @@ const VideoTool: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row lg:h-full gap-6 p-1 lg:overflow-hidden">
+    <div className="flex flex-col lg:flex-row h-full gap-6 p-1 overflow-hidden flex-1">
       {/* Parameters Sidebar */}
-      <div className="w-full lg:w-[400px] flex flex-col gap-4 lg:overflow-y-auto custom-scrollbar pr-1 lg:shrink-0">
+      <div className="w-full lg:w-[400px] flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-1 lg:shrink-0">
         <div className="bg-app-surface/60 p-6 rounded-3xl border border-app-border shadow-xl backdrop-blur-md">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-bold flex items-center gap-2 text-cyan-400">
@@ -274,12 +274,12 @@ const VideoTool: React.FC = () => {
       </div>
 
       {/* Main Preview / Output Box */}
-      <div className="flex-1 flex flex-col gap-6 lg:overflow-hidden min-h-[500px] lg:min-h-0">
-        <div className="bg-app-surface/30 rounded-3xl border border-app-border flex-1 flex flex-col items-center justify-center relative overflow-hidden group/preview p-0 bg-black/40 min-h-[400px]">
+      <div className="flex-1 flex flex-col gap-6 min-h-0">
+        <div className="bg-app-surface/30 rounded-3xl border border-app-border flex-1 flex flex-col items-center justify-center relative overflow-hidden group/preview p-0 bg-black/40 min-h-0">
           
           {isGenerating && (
             <div className="absolute inset-0 z-[60] bg-app-base/95 backdrop-blur-md flex flex-col animate-fade-in">
-              <div className="p-8 flex flex-col items-center justify-center gap-4 text-center">
+              <div className="p-8 flex flex-col items-center justify-center gap-4 text-center shrink-0">
                 <div className="relative">
                   <div className="w-20 h-20 border-4 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin" />
                   <Video className="absolute inset-0 m-auto text-cyan-400 animate-pulse" size={28} />
@@ -292,7 +292,7 @@ const VideoTool: React.FC = () => {
 
               <div className="flex-1 px-6 pb-6 flex flex-col overflow-hidden">
                  <div className="bg-black/60 border border-white/10 rounded-2xl overflow-hidden flex flex-col h-full shadow-2xl">
-                    <div className="bg-white/5 px-4 py-2 flex items-center justify-between border-b border-white/5">
+                    <div className="bg-white/5 px-4 py-2 flex items-center justify-between border-b border-white/5 shrink-0">
                        <div className="flex items-center gap-2 text-[10px] font-bold text-cyan-400 uppercase tracking-widest"><Terminal size={12} /> System Logs</div>
                        <button onClick={() => setShowConsole(!showConsole)} className="text-app-subtext hover:text-white transition-colors">{showConsole ? <ChevronDown size={14} /> : <ChevronUp size={14} />}</button>
                     </div>
@@ -313,7 +313,14 @@ const VideoTool: React.FC = () => {
 
           {generatedVideoUrl ? (
             <div className="w-full h-full flex items-center justify-center animate-fade-in group relative bg-black">
-              <video src={generatedVideoUrl} className="w-full h-full max-w-full max-h-full object-contain shadow-2xl" controls autoPlay loop playsInline />
+              <video 
+                src={generatedVideoUrl} 
+                className="max-w-full max-h-full w-auto h-auto object-contain shadow-2xl" 
+                controls 
+                autoPlay 
+                loop 
+                playsInline 
+              />
               <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity flex gap-3 z-20">
                 <a href={generatedVideoUrl} download target="_blank" rel="noopener noreferrer" className="p-3 bg-black/80 hover:bg-app-accent rounded-full text-white backdrop-blur-md transition-all shadow-xl"><Download size={24} /></a>
                 <button onClick={() => setGeneratedVideoUrl(null)} className="p-3 bg-red-600/80 hover:bg-red-500 rounded-full text-white backdrop-blur-md transition-all shadow-xl"><Trash2 size={24} /></button>
