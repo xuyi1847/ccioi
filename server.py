@@ -66,7 +66,7 @@ def build_torchrun_command(payload: dict) -> str:
 
     cmd = [
         "torchrun",
-        "--nproc_per_node", "1",
+        "--nproc_per_node", "2",
         "--standalone",
         "scripts/diffusion/inference.py",
         p["config"],
