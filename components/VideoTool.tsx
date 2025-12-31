@@ -368,7 +368,7 @@ const VideoTool: React.FC = () => {
             <div className="w-full h-full flex items-center justify-center animate-fade-in group relative bg-black overflow-hidden">
               <video 
                 src={generatedVideoUrl} 
-                className="max-w-full max-h-full w-auto h-auto object-contain shadow-2xl z-10" 
+                className="w-full h-full object-contain z-10" 
                 controls 
                 autoPlay 
                 loop 
