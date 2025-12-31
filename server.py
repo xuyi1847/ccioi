@@ -17,6 +17,7 @@ from fastapi import (
     HTTPException,
     Depends,
     Header,
+    Form,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
@@ -543,9 +544,9 @@ async def optimize_prompt(
 # =========================================================
 @app.post("/gpu/upload")
 async def gpu_upload(
-    task_id: str,
-    user_id: str,
-    prompt: str = "",
+    task_id: str = Form(...),
+    user_id: str = Form(...),
+    prompt: str = Form(""),
     file: UploadFile = File(...),
 ):
     """
@@ -556,6 +557,7 @@ async def gpu_upload(
     """
     if not task_id or not user_id:
         raise HTTPException(status_code=400, detail="task_id and user_id required")
+
     try:
         # ===== 1. 存视频 =====
         video_key = f"videos/{task_id}.mp4"
