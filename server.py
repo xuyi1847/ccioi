@@ -277,7 +277,7 @@ task_gpu_map: Dict[str, str] = {}
 # task_id -> {"user_id": str, "prompt": str, "created_at": float}
 task_ctx_map: Dict[str, dict] = {}
 
-def build_torchrun_command(payload: dict) -> str:
+def build_torchrun_command(payload: dict,taskid: str) -> str:
     """
     构建 torchrun 命令：
     - ref_image 为 None 时，不传 --cond_type / --ref
@@ -289,7 +289,7 @@ def build_torchrun_command(payload: dict) -> str:
         "--standalone",
         "scripts/diffusion/inference.py",
         p["config"],
-        "--save-dir", "outputs/videodemo5",
+        "--save-dir", f"outputs/{taskid}",
         "--prompt", f"\"{p['prompt']}\"",
         "--sampling_option.num_steps", str(p["steps"]),
         "--sampling_option.num_frames", str(p["frames"]),
@@ -370,29 +370,6 @@ async def gpu_ws(ws: WebSocket):
                 frontend_ws = task_frontend_map.pop(task_id, None)
                 task_gpu_map.pop(task_id, None)
 
-                # 写 meta（成功才写）
-                if msg.get("status") == "success":
-                    user_id = msg.get("user_id")
-                    prompt = msg.get("prompt")
-                    # public_url 兼容两种结构：msg.public_url 或 msg.output.public_url
-                    public_url = msg.get("public_url") or (msg.get("output") or {}).get("public_url")
-
-                    if user_id and task_id and public_url:
-                        meta_key = f"users/{user_id}/meta/{task_id}.json"
-                        bucket.put_object(
-                            meta_key,
-                            json.dumps(
-                                {
-                                    "id": task_id,
-                                    "user_id": user_id,
-                                    "prompt": prompt,
-                                    "video_url": public_url,
-                                    "created_at": time.time(),
-                                },
-                                ensure_ascii=False,
-                            ),
-                        )
-
                 # 透传给前端
                 if frontend_ws:
                     await frontend_ws.send_text(json.dumps(msg))
@@ -455,7 +432,7 @@ async def frontend_ws(ws: WebSocket):
 
             # 构建任务
             task_id = str(uuid.uuid4())
-            command = build_torchrun_command(data)
+            command = build_torchrun_command(data,task_id)
             prompt = (data.get("parameters") or {}).get("prompt")
 
             # 保存 task 上下文（保证 GPU 回来时一定能补齐 user_id/prompt）
@@ -559,4 +536,55 @@ async def optimize_prompt(
 
     except Exception as e:
         print("🔥 optimizePrompt failed:", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+# =========================================================
+# GPU UPLOAD API (GPU -> Server -> OSS + META)
+# =========================================================
+@app.post("/gpu/upload")
+async def gpu_upload(
+    task_id: str,
+    user_id: str,
+    prompt: str = "",
+    file: UploadFile = File(...),
+):
+    """
+    GPU 生成完成后调用：
+    - 上传视频
+    - 写 OSS
+    - 写 meta
+    """
+    if not task_id or not user_id:
+        raise HTTPException(status_code=400, detail="task_id and user_id required")
+    try:
+        # ===== 1. 存视频 =====
+        video_key = f"videos/{task_id}.mp4"
+        content = await file.read()
+        bucket.put_object(video_key, content)
+        public_url = _oss_public_url(video_key)
+
+        # ===== 2. 写 meta =====
+        meta_key = f"users/{user_id}/meta/{task_id}.json"
+        bucket.put_object(
+            meta_key,
+            json.dumps(
+                {
+                    "id": task_id,
+                    "user_id": user_id,
+                    "prompt": prompt,
+                    "video_url": public_url,
+                    "created_at": time.time(),
+                },
+                ensure_ascii=False,
+            ),
+        )
+
+        return {
+            "status": "success",
+            "task_id": task_id,
+            "public_url": public_url,
+        }
+
+    except Exception as e:
+        print("🔥 gpu_upload failed:", e)
         raise HTTPException(status_code=500, detail=str(e))
