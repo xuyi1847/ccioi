@@ -304,6 +304,17 @@ const VideoTool: React.FC = () => {
                 <label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.fps')}</label>
                 <input type="number" value={fps} onChange={e => setFps(parseInt(e.target.value))} className="w-full bg-app-base p-1 rounded text-[10px]" />
               </div>
+              <div className="col-span-2">
+                <label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.motion_score')}</label>
+                <input 
+                  type="number" 
+                  min="0" 
+                  max="10"
+                  value={motionScore} 
+                  onChange={e => setMotionScore(parseInt(e.target.value))} 
+                  className="w-full bg-app-base p-1 rounded text-[10px]" 
+                />
+              </div>
             </div>
 
             <button 
