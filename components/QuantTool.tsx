@@ -16,8 +16,6 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { Message } from '../types';
@@ -52,8 +50,7 @@ interface QuantResult {
 
 /**
  * 递归着色组件：涨红 (+) 跌绿 (-)
- * 逻辑：仅匹配 [+ 或 -] 紧跟数字，不改变字号，不强制加粗。
- * 排除日期：2026-01-12 中的横杠会被忽略。
+ * 逻辑：匹配 [+-]数字[%]，且排除日期干扰。
  */
 const ColorizeNumbers = ({ children }: { children: any }): any => {
   if (!children) return null;
@@ -68,10 +65,10 @@ const ColorizeNumbers = ({ children }: { children: any }): any => {
       return parts.map((part, i) => {
         if (!part) return null;
         if (part.startsWith('+')) {
-          return <span key={i} className="text-red-500">{part}</span>;
+          return <span key={i} className="text-red-500 font-medium">{part}</span>;
         }
         if (part.startsWith('-')) {
-          return <span key={i} className="text-green-500">{part}</span>;
+          return <span key={i} className="text-green-500 font-medium">{part}</span>;
         }
         return part;
       });
@@ -85,49 +82,6 @@ const ColorizeNumbers = ({ children }: { children: any }): any => {
 
     return child;
   });
-};
-
-/**
- * Markdown 结构修复器
- */
-const robustFixMarkdown = (text: string) => {
-  if (!text) return "";
-  let result = text;
-  result = result.replace(/([^\n|])\n(\|)/g, '$1\n\n$2');
-  result = result.replace(/(\|[:\-\s|]+\|)([^\n])/g, '$1\n$2');
-  result = result.replace(/\|\|\s*/g, '|\n|');
-  result = result.replace(/([^\n])\s*(#{1,6}\s)/g, '$1\n\n$2');
-  return result;
-};
-
-// Markdown 自定义组件
-const MarkdownComponents = {
-  table: ({ children }: any) => (
-    <div className="my-5 overflow-x-auto rounded-xl border border-app-border bg-black/40 shadow-inner">
-      <table className="w-full text-left text-[11px] border-collapse min-w-[350px]">
-        {children}
-      </table>
-    </div>
-  ),
-  thead: ({ children }: any) => (
-    <thead className="bg-app-surface/80 text-app-text font-bold border-b border-app-border uppercase">
-      {children}
-    </thead>
-  ),
-  th: ({ children }: any) => <th className="p-2.5 border-r border-app-border/30 last:border-r-0">{children}</th>,
-  tr: ({ children }: any) => <tr className="border-b border-app-border/20 last:border-0 hover:bg-app-accent/5 transition-colors">{children}</tr>,
-  td: ({ children }: any) => (
-    <td className="p-2.5 border-r border-app-border/20 last:border-r-0 whitespace-nowrap text-app-text">
-      <ColorizeNumbers>{children}</ColorizeNumbers>
-    </td>
-  ),
-  h1: ({ children }: any) => <h1 className="text-lg font-bold text-white mt-6 mb-3 border-b border-app-border pb-1">{children}</h1>,
-  h2: ({ children }: any) => <h2 className="text-base font-bold text-white mt-5 mb-2 flex items-center gap-2"><div className="w-1 h-3.5 bg-app-accent rounded-full" />{children}</h2>,
-  p: ({ children }: any) => <p className="mb-3 leading-relaxed text-[13px] text-app-text/90 italic-none"><ColorizeNumbers>{children}</ColorizeNumbers></p>,
-  ul: ({ children }: any) => <ul className="list-disc pl-4 mb-4 space-y-1.5 text-[13px] text-app-text/90">{children}</ul>,
-  li: ({ children }: any) => <li className="pl-1 italic-none"><ColorizeNumbers>{children}</ColorizeNumbers></li>,
-  strong: ({ children }: any) => <strong className="font-bold text-white">{children}</strong>,
-  em: ({ children }: any) => <span className="italic-none">{children}</span>, 
 };
 
 const QuantTool: React.FC = () => {
@@ -190,9 +144,8 @@ const QuantTool: React.FC = () => {
         1. 组合汇总: ${result.portfolio_summary}
         2. 详细资产状态: ${JSON.stringify(result.assets)}
         要求：
-        - 使用 Markdown 格式。
+        - 直接输出文本内容，不要使用 Markdown 语法。
         - 必须包含具体的风险评估、市场位置判断和最终建议。
-        - 严禁使用斜体样式。
         - 对上涨数值必须显式标注 +，下跌标注 -。`,
       });
       setAiConclusion(aiResponse.text || "");
@@ -382,7 +335,7 @@ const QuantTool: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="text-[12px] text-app-text/70 bg-black/40 p-4 rounded-2xl leading-relaxed italic-none flex gap-3">
+                      <div className="text-[12px] text-app-text/70 bg-black/40 p-4 rounded-2xl leading-relaxed flex gap-3 italic-none">
                         <Info size={14} className="shrink-0 text-app-accent opacity-50" />
                         <span>{asset.summary}</span>
                       </div>
@@ -397,11 +350,9 @@ const QuantTool: React.FC = () => {
                   <Bot size={18} className="text-app-accent" />
                   <span className="text-[10px] font-bold text-app-accent uppercase tracking-widest">AI 多因子深度解读</span>
                 </div>
-                <div className="prose prose-invert prose-sm max-w-none">
+                <div className="text-app-text/90 text-[13px] leading-relaxed whitespace-pre-wrap">
                   {aiConclusion && (
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
-                      {robustFixMarkdown(aiConclusion)}
-                    </ReactMarkdown>
+                    <ColorizeNumbers>{aiConclusion}</ColorizeNumbers>
                   )}
                 </div>
               </div>
@@ -436,10 +387,10 @@ const QuantTool: React.FC = () => {
                     ? 'bg-black/50 text-app-text border-app-border rounded-tl-none shadow-sm' 
                     : 'bg-app-accent text-white border-none rounded-tr-none shadow-lg'
                 }`}>
-                  <div className="prose prose-invert prose-sm max-w-none relative italic-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
-                      {robustFixMarkdown(msg.content)}
-                    </ReactMarkdown>
+                  <div className="whitespace-pre-wrap leading-relaxed relative">
+                    <ColorizeNumbers>
+                      {msg.content}
+                    </ColorizeNumbers>
                     {isLastModel && <span className="inline-block w-1.5 h-3.5 bg-app-accent ml-1 animate-pulse align-middle" />}
                   </div>
                 </div>
