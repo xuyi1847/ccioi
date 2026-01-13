@@ -11,7 +11,9 @@ import {
   X,
   Play,
   Sparkles,
-  History
+  History,
+  Link as LinkIcon,
+  Zap
 } from 'lucide-react';
 import { AppView, ToolConfig } from './types';
 import ChatTool from './components/ChatTool';
@@ -20,6 +22,7 @@ import VideoTool from './components/VideoTool';
 import AudioTool from './components/AudioTool';
 import TextTool from './components/TextTool';
 import HistoryTool from './components/HistoryTool';
+import AmazonPollutionTool from './components/AmazonPollutionTool';
 import Logo from './components/Logo';
 import AuthModal from './components/AuthModal';
 import PaymentModal from './components/PaymentModal';
@@ -48,6 +51,7 @@ const AppContent: React.FC = () => {
     { id: AppView.VIDEO, name: t('nav.video'), description: t('nav.video.desc'), icon: Video, color: 'text-cyan-400' },
     { id: AppView.AUDIO, name: t('nav.audio'), description: t('nav.audio.desc'), icon: Mic, color: 'text-rose-400' },
     { id: AppView.TEXT_ANALYSIS, name: t('nav.text'), description: t('nav.text.desc'), icon: FileText, color: 'text-emerald-400' },
+    { id: AppView.AMAZON_POLLUTION, name: t('nav.amazon'), description: t('nav.amazon.desc'), icon: Zap, color: 'text-amber-500' },
     { id: AppView.HISTORY, name: t('nav.history'), description: t('nav.history.desc'), icon: History, color: 'text-app-subtext' },
   ];
 
@@ -72,6 +76,7 @@ const AppContent: React.FC = () => {
       case AppView.VIDEO: return <VideoTool />;
       case AppView.AUDIO: return <AudioTool />;
       case AppView.TEXT_ANALYSIS: return <TextTool />;
+      case AppView.AMAZON_POLLUTION: return <AmazonPollutionTool />;
       case AppView.HISTORY: return <HistoryTool />;
       default: return (
         <div className="flex-1 overflow-y-auto custom-scrollbar w-full">
@@ -86,10 +91,10 @@ const AppContent: React.FC = () => {
             <div className="w-full max-w-6xl px-4">
               <h2 className="text-[10px] md:text-sm font-bold text-app-subtext uppercase tracking-[0.3em] mb-4 md:mb-8 text-center">{t('app.modules')}</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
-                {tools.slice(0, 5).map((tool) => (
+                {tools.filter(t => t.id !== AppView.HISTORY).map((tool) => (
                   <button key={tool.id} onClick={() => setCurrentView(tool.id)} className="group bg-app-surface/40 hover:bg-app-surface border border-app-border p-4 md:p-6 rounded-2xl md:rounded-3xl transition-all hover:-translate-y-1 hover:border-app-accent/30 text-center relative overflow-hidden backdrop-blur-sm">
                     <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-app-base flex items-center justify-center mx-auto mb-3 md:mb-4 ${tool.color} group-hover:scale-110 transition-transform`}><tool.icon size={20} /></div>
-                    <h3 className="text-base md:text-lg font-bold text-app-text mb-1">{tool.name}</h3>
+                    <h3 className="text-sm md:text-base font-bold text-app-text mb-1 truncate">{tool.name}</h3>
                     <p className="text-app-subtext text-[10px] md:text-xs line-clamp-1">{tool.description}</p>
                   </button>
                 ))}

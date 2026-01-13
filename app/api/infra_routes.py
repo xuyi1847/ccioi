@@ -1,15 +1,24 @@
-# server.py
+# infra_routes.py
 import json
 import time
 import uuid
 from typing import Dict, Optional, Tuple, Any
 
+import json
+import time
+import random
+import csv
+import asyncio
+import traceback
+from playwright.sync_api import sync_playwright
+from concurrent.futures import ThreadPoolExecutor
 import os
 import jwt
 import oss2
 
 from fastapi import (
     FastAPI,
+    APIRouter,
     WebSocket,
     WebSocketDisconnect,
     UploadFile,
@@ -19,14 +28,19 @@ from fastapi import (
     Header,
     Form,
 )
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
+from openai import OpenAI
 
 # =========================================================
-# APP
+# APP / ROUTER
 # =========================================================
+router = APIRouter()
 app = FastAPI()
-
+app.include_router(router)
+frontend_ws_global = None
+agent_ws_global = None
 # =========================================================
 # JWT CONFIG
 # =========================================================
@@ -131,10 +145,16 @@ class RegisterReq(BaseModel):
 class LoginReq(BaseModel):
     email: EmailStr
 
+
+class DeepSeekChatReq(BaseModel):
+    messages: list[dict]
+    stream: bool = False
+    model: Optional[str] = None
+
 # =========================================================
 # AUTH APIs
 # =========================================================
-@app.post("/register")
+@router.post("/register")
 async def register(req: RegisterReq):
     email = req.email.lower().strip()
 
@@ -168,7 +188,7 @@ async def register(req: RegisterReq):
         "token": token,
     }
 
-@app.post("/login")
+@router.post("/login")
 async def login(req: LoginReq):
     email = req.email.lower().strip()
     user = users_by_email.get(email)
@@ -187,10 +207,53 @@ async def login(req: LoginReq):
         "token": token,
     }
 
+
+@router.post("/chat")
+async def ccioi_chat(req: DeepSeekChatReq):
+    api_key = os.getenv("CCIOI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="CCIOI_API_KEY is missing")
+
+    base_url = os.getenv("CCIOI_BASE_URL", "https://api.deepseek.com")
+    client = OpenAI(api_key=api_key, base_url=base_url)
+    model = req.model or "deepseek-chat"
+
+    if req.stream:
+        def stream_generator():
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=req.messages,
+                    stream=True,
+                )
+                for chunk in response:
+                    delta = chunk.choices[0].delta
+                    content = getattr(delta, "content", None)
+                    if content:
+                        yield f"data: {content}\n\n"
+            except Exception as exc:
+                yield f"data: [ERROR] {exc}\n\n"
+
+        return StreamingResponse(
+            stream_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            },
+        )
+
+    response = client.chat.completions.create(
+        model=model,
+        messages=req.messages,
+        stream=False,
+    )
+    return {"content": response.choices[0].message.content}
+
 # =========================================================
 # UPLOAD API (Frontend -> Server -> OSS)
 # =========================================================
-@app.post("/upload")
+@router.post("/upload")
 async def upload_to_oss(file: UploadFile = File(...)):
     """
     上传文件到 OSS
@@ -214,7 +277,7 @@ async def upload_to_oss(file: UploadFile = File(...)):
 # =========================================================
 # HISTORY APIs (JWT -> user_id -> list OSS meta)
 # =========================================================
-@app.get("/history")
+@router.get("/history")
 async def get_history(user: dict = Depends(get_user_from_auth)):
     """
     获取用户生成历史（从 OSS meta 目录读取）
@@ -242,7 +305,7 @@ async def get_history(user: dict = Depends(get_user_from_auth)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/history/{task_id}")
+@router.delete("/history/{task_id}")
 async def delete_history_item(task_id: str, user: dict = Depends(get_user_from_auth)):
     """
     删除历史记录：
@@ -308,7 +371,7 @@ def select_idle_gpu() -> Tuple[Optional[str], Optional[dict]]:
             return gpu_id, info
     return None, None
 
-@app.websocket("/ws/gpu")
+@router.websocket("/ws/gpu")
 async def gpu_ws(ws: WebSocket):
     await ws.accept()
 
@@ -387,8 +450,10 @@ async def gpu_ws(ws: WebSocket):
         gpu_registry.pop(gpu_id, None)
         print(f"🔥 GPU error ({gpu_id}): {e}")
 
-@app.websocket("/ws")
+@router.websocket("/ws")
 async def frontend_ws(ws: WebSocket):
+    global frontend_ws_global
+    frontend_ws_global = ws
     """
     前端 WS：要求第一条消息携带 token，用于绑定该 WS 的 user_id
     你前端已“所有接口调用都传递 token”，这里也按 token 来做。
@@ -420,6 +485,30 @@ async def frontend_ws(ws: WebSocket):
                 else:
                     await ws.send_text(json.dumps({"type": "AUTH_REQUIRED", "message": "Send token first"}))
                     continue
+            # =========================================================
+            # AMAZON POLLUTION (真实 Rufus 调用版本)
+            # =========================================================
+            # 如果是 Amazon 污染任务 → 转发给 Agent
+            if data.get("task") == "AMAZON_POLLUTION":
+                params = data.get("parameters", {})
+                
+                # 如果 Agent 已连接，则转发
+                if agent_ws_global:
+                    await agent_ws_global.send_text(json.dumps({
+                        "task": "AMAZON_POLLUTION",
+                        "parameters": params
+                    }))
+                else:
+                    await ws.send_text(json.dumps({
+                        "type": "TASK_LOG",
+                        "stream": "stderr",
+                        "line": "本地 Agent 未连接，无法执行自动化污染任务"
+                    }))
+                
+                continue
+
+
+
 
             if data.get("type") != "TASK_EXECUTION":
                 await ws.send_text(json.dumps({"type": "IGNORED", "message": "Unsupported message type"}))
@@ -487,7 +576,7 @@ class OptimizePromptReq(BaseModel):
     prompt: str
 
 
-@app.post("/optimizePrompt")
+@router.post("/optimizePrompt")
 async def optimize_prompt(
     req: OptimizePromptReq,
     authorization: Optional[str] = Header(None),
@@ -542,7 +631,7 @@ async def optimize_prompt(
 # =========================================================
 # GPU UPLOAD API (GPU -> Server -> OSS + META)
 # =========================================================
-@app.post("/gpu/upload")
+@router.post("/gpu/upload")
 async def gpu_upload(
     task_id: str = Form(...),
     user_id: str = Form(...),
@@ -590,3 +679,64 @@ async def gpu_upload(
     except Exception as e:
         print("🔥 gpu_upload failed:", e)
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/amazon/pollution/effect")
+async def amazon_pollution_effect():
+    RAW_FILE = "rufus_raw.csv"
+
+    if not os.path.exists(RAW_FILE):
+        return {"error": "No pollution task executed yet"}
+
+    import csv
+    rows = []
+    with open(RAW_FILE, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            rows.append(row["answer"].lower())
+
+    # 动态从 CSV 自动发现关键词（出现次数前10）
+    from collections import Counter
+    words = []
+
+    for ans in rows:
+        for w in ans.replace(",", " ").split():
+            if len(w) > 3:
+                words.append(w)
+
+    freq = Counter(words).most_common(20)
+
+    return {
+        "total": len(rows),
+        "top_keywords": freq,
+    }
+
+@router.websocket("/ws/agent")
+async def agent_ws(ws: WebSocket):
+    global agent_ws_global
+    agent_ws_global = ws
+
+    await ws.accept()
+    print("Agent connected.")
+
+    try:
+        while True:
+            msg = await ws.receive_text()
+            data = json.loads(msg)
+
+            # 心跳
+            if data.get("type") == "HEARTBEAT":
+                continue
+
+            # Agent 发送的日志转发给前端
+            if data.get("type") == "AGENT_LOG":
+                line = data.get("line", "")
+                if frontend_ws_global:
+                    await frontend_ws_global.send_text(json.dumps({
+                        "type": "TASK_LOG",
+                        "stream": "stdout",
+                        "line": line
+                    }))
+                continue
+
+    except Exception as e:
+        print("Agent WS error:", e)

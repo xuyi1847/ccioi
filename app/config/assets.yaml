@@ -1,0 +1,43 @@
+version: 1.0
+updated_at: "2026-01-08"
+
+defaults:
+  asset_cap: 0.3          # 未显式配置资产的最大仓位上限
+  min_history_days: 252   # 最少历史数据要求（1 年）
+
+assets:
+
+  "159915":
+    name: "创业板ETF"
+    type: etf
+    asset_cap: 1.0
+    risk_level: high
+    notes: "高波动指数ETF，允许满仓参与"
+
+  "510300":
+    name: "沪深300ETF"
+    type: etf
+    asset_cap: 0.8
+    risk_level: medium
+    notes: "宽基指数ETF，风险中等"
+
+  "001194":
+    name: "主动混合基金"
+    type: open_fund
+    asset_cap: 0.3
+    risk_level: low
+    notes: "主动基金，反转密度低，仅小仓参与"
+
+  "110022":
+    name: "易方达消费混合"
+    type: open_fund
+    asset_cap: 0.3
+    risk_level: medium
+    notes: "行业主动基金，波动偏高"
+
+  "161725":
+    name: "招商中证白酒"
+    type: open_fund
+    asset_cap: 0.5
+    risk_level: high
+    notes: "行业集中度高，不建议满仓"
