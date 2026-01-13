@@ -13,7 +13,8 @@ import {
   Sparkles,
   History,
   Link as LinkIcon,
-  Zap
+  Zap,
+  TrendingUp
 } from 'lucide-react';
 import { AppView, ToolConfig } from './types';
 import ChatTool from './components/ChatTool';
@@ -23,6 +24,7 @@ import AudioTool from './components/AudioTool';
 import TextTool from './components/TextTool';
 import HistoryTool from './components/HistoryTool';
 import AmazonPollutionTool from './components/AmazonPollutionTool';
+import QuantTool from './components/QuantTool';
 import Logo from './components/Logo';
 import AuthModal from './components/AuthModal';
 import PaymentModal from './components/PaymentModal';
@@ -52,6 +54,7 @@ const AppContent: React.FC = () => {
     { id: AppView.AUDIO, name: t('nav.audio'), description: t('nav.audio.desc'), icon: Mic, color: 'text-rose-400' },
     { id: AppView.TEXT_ANALYSIS, name: t('nav.text'), description: t('nav.text.desc'), icon: FileText, color: 'text-emerald-400' },
     { id: AppView.AMAZON_POLLUTION, name: t('nav.amazon'), description: t('nav.amazon.desc'), icon: Zap, color: 'text-amber-500' },
+    { id: AppView.QUANTITATIVE_ANALYSIS, name: t('nav.quant'), description: t('nav.quant.desc'), icon: TrendingUp, color: 'text-green-500' },
     { id: AppView.HISTORY, name: t('nav.history'), description: t('nav.history.desc'), icon: History, color: 'text-app-subtext' },
   ];
 
@@ -77,6 +80,7 @@ const AppContent: React.FC = () => {
       case AppView.AUDIO: return <AudioTool />;
       case AppView.TEXT_ANALYSIS: return <TextTool />;
       case AppView.AMAZON_POLLUTION: return <AmazonPollutionTool />;
+      case AppView.QUANTITATIVE_ANALYSIS: return <QuantTool />;
       case AppView.HISTORY: return <HistoryTool />;
       default: return (
         <div className="flex-1 overflow-y-auto custom-scrollbar w-full">
