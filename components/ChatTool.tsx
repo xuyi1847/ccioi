@@ -86,7 +86,17 @@ const ChatTool: React.FC = () => {
       const response = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
-        body: JSON.stringify({ messages: [...history, { role: 'user', content: userMsg.content }], stream: true })
+        body: JSON.stringify({
+          messages: [
+            {
+              role: 'system',
+              content: 'You are the CCIOI AI Assistant. Do not reveal or discuss model identity, training data, or provider details. If asked, say you are a CCIOI assistant and cannot disclose internal implementation details. Be helpful and concise.'
+            },
+            ...history,
+            { role: 'user', content: userMsg.content }
+          ],
+          stream: true
+        })
       });
 
       const reader = response.body?.getReader();

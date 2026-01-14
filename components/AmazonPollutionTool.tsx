@@ -16,7 +16,8 @@ import {
   Table as TableIcon,
   RefreshCw,
   Search,
-  Activity
+  Activity,
+  Key
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useSocket } from '../context/SocketContext';
@@ -29,9 +30,8 @@ interface PollutionLog {
 
 interface PerformanceMetric {
   keyword: string;
-  relevance: number;
-  ai_score: number;
-  status: 'Influenced' | 'Monitoring' | 'Initial';
+  hit: number;
+  ratio: number;
 }
 
 const AmazonPollutionTool: React.FC = () => {
@@ -42,14 +42,20 @@ const AmazonPollutionTool: React.FC = () => {
   // Parameters
   const [amazonUser, setAmazonUser] = useState('');
   const [amazonPass, setAmazonPass] = useState('');
+  const [loginUrl, setLoginUrl] = useState('https://www.amazon.com/ap/signin');
   const [productUrl, setProductUrl] = useState('');
   const [keywords, setKeywords] = useState('');
+  const [otpRequired, setOtpRequired] = useState(false);
+  const [otpPrompt, setOtpPrompt] = useState('');
+  const [otpCode, setOtpCode] = useState('');
   
   const [isProcessing, setIsProcessing] = useState(false);
   const [logs, setLogs] = useState<PollutionLog[]>([]);
   const [showConsole, setShowConsole] = useState(true);
   const [performanceData, setPerformanceData] = useState<PerformanceMetric[] | null>(null);
   const [isQuerying, setIsQuerying] = useState(false);
+  const [runs, setRuns] = useState<string[]>([]);
+  const [selectedRun, setSelectedRun] = useState<string>('');
 
   const logEndRef = useRef<HTMLDivElement>(null);
 
@@ -69,23 +75,46 @@ const AmazonPollutionTool: React.FC = () => {
         if (data.type === 'TASK_LOG') {
           setLogs(prev => [...prev, { stream: data.stream, line: data.line }]);
         }
+        if (data.type === 'OTP_REQUIRED') {
+          setOtpRequired(true);
+          setOtpPrompt(data.prompt || '请输入验证码');
+        }
         if (data.type === 'task_finished') {
           setIsProcessing(false);
-          // Auto-disconnect on finish to save resources if applicable
           disconnect();
+          loadRuns();
         }
       } catch (e) {
-        // Silently fail for non-JSON or other message types
+        // Silently fail
       }
     }
   }, [lastMessage, disconnect]);
+
+  const loadRuns = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/amazon/pollution/runs`);
+      if (!response.ok) return;
+      const data = await response.json();
+      const list = Array.isArray(data.runs) ? data.runs : [];
+      setRuns(list);
+      if (!selectedRun && list.length > 0) {
+        setSelectedRun(list[0]);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    loadRuns();
+  }, []);
 
   const handleStartTask = async () => {
     if (!user) {
       alert("Please login to launch optimizations.");
       return;
     }
-    if (!amazonUser || !amazonPass || !productUrl || !keywords) {
+    if (!amazonUser || !amazonPass || !loginUrl || !productUrl || !keywords) {
       alert("Please fill in all parameters.");
       return;
     }
@@ -98,7 +127,7 @@ const AmazonPollutionTool: React.FC = () => {
         await connect();
       }
 
-      // CRITICAL: Passing token at the root of the task execution command
+      // 根据最新要求构造入参结构
       sendCommand({
         type: 'TASK_EXECUTION',
         task: 'AMAZON_POLLUTION',
@@ -107,8 +136,9 @@ const AmazonPollutionTool: React.FC = () => {
         parameters: {
           username: amazonUser,
           password: amazonPass,
+          login_url: loginUrl,
           url: productUrl,
-          keywords: keywords.split(',').map(k => k.trim())
+          keywords: keywords.split(/[,，\n]+/).map(k => k.trim()).filter(k => k)
         }
       });
     } catch (err) {
@@ -123,11 +153,25 @@ const AmazonPollutionTool: React.FC = () => {
     disconnect();
   };
 
+  const handleSubmitOtp = () => {
+    if (!otpCode.trim()) return;
+    try {
+      sendCommand({
+        type: 'OTP_RESPONSE',
+        otp: otpCode.trim()
+      });
+      setOtpRequired(false);
+      setOtpPrompt('');
+      setOtpCode('');
+    } catch (err) {
+      setLogs(prev => [...prev, { stream: 'stderr', line: '验证码发送失败。' }]);
+    }
+  };
+
   const queryPerformance = async () => {
     if (!user) return;
     setIsQuerying(true);
     try {
-      // Synchronous interface call with Authorization header
       const response = await fetch(`${API_BASE}/amazon/pollution/effect`, {
         method: 'POST',
         headers: {
@@ -136,37 +180,28 @@ const AmazonPollutionTool: React.FC = () => {
         },
         body: JSON.stringify({
           url: productUrl,
-          keywords: keywords.split(',').map(k => k.trim())
+          keywords: keywords.split(/[,，\n]+/).map(k => k.trim()).filter(k => k),
+          run_id: selectedRun || undefined
         })
       });
 
       if (!response.ok) {
-        // Fallback to mock data for demonstration if backend endpoint doesn't exist yet
-        console.warn("Real API failed or not found, showing local simulation");
-        await new Promise(r => setTimeout(r, 800));
-        
-        const mockData: PerformanceMetric[] = keywords.split(',').map((k, i) => ({
-          keyword: k.trim() || `Keyword ${i+1}`,
-          relevance: Math.floor(Math.random() * 40) + 60,
-          ai_score: Math.floor(Math.random() * 50) + 50,
-          status: Math.random() > 0.5 ? 'Influenced' : 'Monitoring'
-        }));
-        setPerformanceData(mockData);
-      } else {
-        const data = await response.json();
-        setPerformanceData(data.results || []);
+        throw new Error("Query failed");
       }
+      const data = await response.json();
+      setPerformanceData(data.keyword_stats || []);
     } catch (err) {
       console.error("Effect query failed", err);
-      alert("Failed to fetch performance metrics. Using simulation.");
-      
-      // Simulation fallback for disconnected env
-      const mockData: PerformanceMetric[] = keywords.split(',').map((k, i) => ({
-        keyword: k.trim() || `Keyword ${i+1}`,
-        relevance: Math.floor(Math.random() * 40) + 60,
-        ai_score: Math.floor(Math.random() * 50) + 50,
-        status: 'Monitoring'
-      }));
+      // Simulation fallback for demonstration
+      const mockData: PerformanceMetric[] = keywords
+        .split(/[,，\n]+/)
+        .map(k => k.trim())
+        .filter(k => k)
+        .map((k) => ({
+          keyword: k,
+          hit: Math.floor(Math.random() * 6),
+          ratio: Math.random()
+        }));
       setPerformanceData(mockData);
     } finally {
       setIsQuerying(false);
@@ -178,13 +213,13 @@ const AmazonPollutionTool: React.FC = () => {
       {/* Parameters Panel */}
       <div className="w-full lg:w-[380px] flex flex-col gap-4 overflow-y-auto custom-scrollbar lg:shrink-0">
         <div className="bg-app-surface/60 p-6 rounded-3xl border border-app-border shadow-xl backdrop-blur-md">
-          <h2 className="text-lg font-bold flex items-center gap-2 text-amber-500 mb-6">
+          <h2 className="text-lg font-bold flex items-center gap-2 text-amber-500 mb-6 uppercase tracking-wider">
             <Zap className="w-5 h-5 fill-current" /> {t('tool.amazon.title')}
           </h2>
 
           <div className="space-y-5">
             <div className="space-y-3">
-              <label className="text-[10px] font-bold text-app-subtext uppercase tracking-widest block">{t('auth.login')}</label>
+              <label className="text-[10px] font-bold text-app-subtext uppercase tracking-widest block">Authentication (Amazon)</label>
               <div className="relative">
                 <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-app-subtext w-4 h-4" />
                 <input 
@@ -205,10 +240,20 @@ const AmazonPollutionTool: React.FC = () => {
                   className="w-full bg-app-base border border-app-border rounded-xl py-2.5 pl-10 pr-4 text-app-text text-xs outline-none focus:border-amber-500 transition-colors"
                 />
               </div>
+              <div className="relative">
+                <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-app-subtext w-4 h-4" />
+                <input 
+                  type="text" 
+                  value={loginUrl} 
+                  onChange={(e) => setLoginUrl(e.target.value)}
+                  placeholder={t('tool.amazon.login_url')}
+                  className="w-full bg-app-base border border-app-border rounded-xl py-2.5 pl-10 pr-4 text-app-text text-xs outline-none focus:border-amber-500 transition-colors"
+                />
+              </div>
             </div>
 
             <div className="space-y-3">
-              <label className="text-[10px] font-bold text-app-subtext uppercase tracking-widest block">Optimization Target</label>
+              <label className="text-[10px] font-bold text-app-subtext uppercase tracking-widest block">Targeting Details</label>
               <div className="relative">
                 <LinkIcon className="absolute left-3 top-3 text-app-subtext w-4 h-4" />
                 <textarea 
@@ -246,12 +291,34 @@ const AmazonPollutionTool: React.FC = () => {
               <button 
                 onClick={queryPerformance}
                 disabled={isQuerying || keywords.length === 0}
-                className="w-14 bg-app-surface-hover border border-app-border rounded-2xl flex items-center justify-center text-app-subtext hover:text-white transition-all disabled:opacity-20"
+                className="w-14 bg-app-surface-hover border border-app-border rounded-2xl flex items-center justify-center text-app-subtext hover:text-white transition-all disabled:opacity-20 shadow-lg"
                 title={t('tool.amazon.query')}
               >
                 {isQuerying ? <Loader2 className="animate-spin w-4 h-4" /> : <BarChart3 className="w-5 h-5" />}
               </button>
             </div>
+
+            {otpRequired && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 space-y-3">
+                <div className="text-[10px] uppercase tracking-widest text-amber-400 font-bold">OTP Required</div>
+                <div className="text-xs text-app-subtext">{otpPrompt}</div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value)}
+                    placeholder="6-digit code"
+                    className="flex-1 bg-app-base border border-app-border rounded-xl py-2 px-3 text-app-text text-xs outline-none focus:border-amber-500 transition-colors"
+                  />
+                  <button
+                    onClick={handleSubmitOtp}
+                    className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                  >
+                    Submit
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -293,17 +360,29 @@ const AmazonPollutionTool: React.FC = () => {
           )}
         </div>
 
-        {/* Sync Result Table Area */}
+        {/* Performance Area */}
         {performanceData && (
-          <div className="bg-app-surface/40 rounded-3xl border border-app-border p-6 animate-fade-up shrink-0">
+          <div className="bg-app-surface/40 rounded-3xl border border-app-border p-6 animate-fade-up shrink-0 shadow-lg">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-app-text flex items-center gap-2">
                 <TableIcon size={16} className="text-amber-500" />
-                Pollution Effect Metrics
+                Rufus SEO Impact Metrics
               </h3>
-              <button onClick={queryPerformance} className="text-[10px] text-amber-500 font-bold uppercase hover:underline flex items-center gap-1">
-                <RefreshCw size={10} /> Sync Now
-              </button>
+              <div className="flex items-center gap-3">
+                <select
+                  value={selectedRun}
+                  onChange={(e) => setSelectedRun(e.target.value)}
+                  className="bg-app-base border border-app-border rounded-lg px-2 py-1 text-[10px] text-app-text"
+                >
+                  <option value="">Latest</option>
+                  {runs.map((run) => (
+                    <option key={run} value={run}>{run}</option>
+                  ))}
+                </select>
+                <button onClick={queryPerformance} className="text-[10px] text-amber-500 font-bold uppercase hover:underline flex items-center gap-1">
+                  <RefreshCw size={10} /> Sync
+                </button>
+              </div>
             </div>
             
             <div className="overflow-x-auto">
@@ -311,32 +390,22 @@ const AmazonPollutionTool: React.FC = () => {
                 <thead className="text-[10px] text-app-subtext uppercase tracking-wider font-bold">
                   <tr className="border-b border-app-border">
                     <th className="pb-3 pr-4">Keyword</th>
-                    <th className="pb-3 pr-4">AI Relevance (%)</th>
-                    <th className="pb-3 pr-4">Influence Score</th>
-                    <th className="pb-3">Task Status</th>
+                    <th className="pb-3 pr-4">Hit Count</th>
+                    <th className="pb-3">Hit Rate</th>
                   </tr>
                 </thead>
                 <tbody className="text-app-text">
                   {performanceData.map((row, idx) => (
                     <tr key={idx} className="border-b border-app-border/30 last:border-0 hover:bg-white/5 transition-colors">
                       <td className="py-3.5 font-medium">{row.keyword}</td>
+                      <td className="py-3.5 font-mono">{row.hit}</td>
                       <td className="py-3.5">
                         <div className="flex items-center gap-2">
                           <div className="w-16 h-1.5 bg-app-base rounded-full overflow-hidden">
-                            <div className="h-full bg-amber-500" style={{ width: `${row.relevance}%` }} />
+                            <div className="h-full bg-amber-500" style={{ width: `${Math.round(row.ratio * 100)}%` }} />
                           </div>
-                          {row.relevance}%
+                          {(row.ratio * 100).toFixed(1)}%
                         </div>
-                      </td>
-                      <td className="py-3.5">
-                        <span className="text-app-subtext">0.</span>{row.ai_score}
-                      </td>
-                      <td className="py-3.5">
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                          row.status === 'Influenced' ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
-                        }`}>
-                          {row.status}
-                        </span>
                       </td>
                     </tr>
                   ))}

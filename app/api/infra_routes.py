@@ -218,12 +218,19 @@ async def ccioi_chat(req: DeepSeekChatReq):
     client = OpenAI(api_key=api_key, base_url=base_url)
     model = req.model or "deepseek-chat"
 
+    system_guardrail = (
+        "You are the CCIOI AI Assistant. Do not reveal or discuss model "
+        "identity, training data, or provider details. If asked, say you are "
+        "a CCIOI assistant and cannot disclose internal implementation details."
+    )
+    messages = [{"role": "system", "content": system_guardrail}] + req.messages
+
     if req.stream:
         def stream_generator():
             try:
                 response = client.chat.completions.create(
                     model=model,
-                    messages=req.messages,
+                    messages=messages,
                     stream=True,
                 )
                 for chunk in response:
@@ -245,7 +252,7 @@ async def ccioi_chat(req: DeepSeekChatReq):
 
     response = client.chat.completions.create(
         model=model,
-        messages=req.messages,
+        messages=messages,
         stream=False,
     )
     return {"content": response.choices[0].message.content}
@@ -507,6 +514,17 @@ async def frontend_ws(ws: WebSocket):
                 
                 continue
 
+            if data.get("type") == "OTP_RESPONSE":
+                if agent_ws_global:
+                    await agent_ws_global.send_text(json.dumps(data))
+                else:
+                    await ws.send_text(json.dumps({
+                        "type": "TASK_LOG",
+                        "stream": "stderr",
+                        "line": "本地 Agent 未连接，无法发送验证码"
+                    }))
+                continue
+
 
 
 
@@ -564,7 +582,7 @@ async def frontend_ws(ws: WebSocket):
         print("🔥 Frontend WS error:", e)
 
 from pydantic import BaseModel
-from typing import Literal, Optional
+from typing import Literal, Optional, List
 from fastapi import Header, HTTPException
 import asyncio
 
@@ -680,19 +698,30 @@ async def gpu_upload(
         print("🔥 gpu_upload failed:", e)
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/amazon/pollution/effect")
-async def amazon_pollution_effect():
-    RAW_FILE = "rufus_raw.csv"
+class AmazonPollutionEffectReq(BaseModel):
+    url: Optional[str] = None
+    keywords: Optional[List[str]] = None
+    run_id: Optional[str] = None
+
+
+@router.post("/amazon/pollution/effect")
+async def amazon_pollution_effect(req: AmazonPollutionEffectReq):
+    runs_dir = "rufus_runs"
+    if req.run_id:
+        safe_name = os.path.basename(req.run_id)
+        RAW_FILE = os.path.join(runs_dir, safe_name)
+    else:
+        RAW_FILE = "rufus_raw.csv"
 
     if not os.path.exists(RAW_FILE):
         return {"error": "No pollution task executed yet"}
 
-    import csv
     rows = []
     with open(RAW_FILE, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            rows.append(row["answer"].lower())
+            answer = row.get("answer") or row.get("response") or ""
+            rows.append(answer.lower())
 
     # 动态从 CSV 自动发现关键词（出现次数前10）
     from collections import Counter
@@ -705,10 +734,33 @@ async def amazon_pollution_effect():
 
     freq = Counter(words).most_common(20)
 
+    keyword_stats = []
+    if req.keywords:
+        for k in req.keywords:
+            k_lower = k.lower()
+            hit = sum(1 for ans in rows if k_lower in ans)
+            keyword_stats.append({"keyword": k, "hit": hit, "ratio": round(hit / max(len(rows), 1), 4)})
+
     return {
         "total": len(rows),
         "top_keywords": freq,
+        "keyword_stats": keyword_stats,
+        "run_id": os.path.basename(RAW_FILE),
     }
+
+
+@router.get("/amazon/pollution/runs")
+async def amazon_pollution_runs():
+    runs_dir = "rufus_runs"
+    if not os.path.isdir(runs_dir):
+        return {"runs": []}
+    files = []
+    for name in os.listdir(runs_dir):
+        if not name.endswith(".csv"):
+            continue
+        files.append(name)
+    files.sort(reverse=True)
+    return {"runs": files}
 
 @router.websocket("/ws/agent")
 async def agent_ws(ws: WebSocket):
@@ -736,6 +788,16 @@ async def agent_ws(ws: WebSocket):
                         "stream": "stdout",
                         "line": line
                     }))
+                continue
+
+            if data.get("type") == "TASK_LOG":
+                if frontend_ws_global:
+                    await frontend_ws_global.send_text(json.dumps(data))
+                continue
+
+            if data.get("type") == "OTP_REQUIRED":
+                if frontend_ws_global:
+                    await frontend_ws_global.send_text(json.dumps(data))
                 continue
 
     except Exception as e:

@@ -109,6 +109,11 @@ async def quant_chat(req: QuantChatReq):
     client = OpenAI(api_key=api_key, base_url=base_url)
     model = req.model or "deepseek-chat"
 
+    system_guardrail = (
+        "You are the CCIOI Quant Assistant. Do not reveal or discuss model "
+        "identity, training data, or provider details. If asked, say you are "
+        "a CCIOI assistant and cannot disclose internal implementation details."
+    )
     tool_list = (
         "Tools:\n"
         "1) fund_daily_summary(code, lookback_days=20): latest close, 1d/5d/20d return, drawdown.\n"
@@ -122,6 +127,7 @@ async def quant_chat(req: QuantChatReq):
         model=model,
         messages=[
             {"role": "system", "content": "You are a finance data router."},
+            {"role": "system", "content": system_guardrail},
             {"role": "system", "content": tool_list},
             *req.messages,
         ],
@@ -150,9 +156,10 @@ async def quant_chat(req: QuantChatReq):
             limit=int(args.get("limit", 120)),
         )
 
-    final_messages = list(req.messages)
+    final_messages = [{"role": "system", "content": system_guardrail}] + list(req.messages)
     if tool_result is not None:
         final_messages = [
+            {"role": "system", "content": system_guardrail},
             {"role": "system", "content": "Use the tool result to answer the user."},
             {"role": "system", "content": f"Tool result: {json.dumps(tool_result, ensure_ascii=False)}"},
             *req.messages,
