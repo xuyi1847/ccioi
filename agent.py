@@ -14,7 +14,7 @@ try:
 except Exception:
     OpenAI = None
 print("[AGENT] Running in:", os.getcwd())
-SERVER_WS = "ws://127.0.0.1:8000/ws/agent"
+SERVER_WS = "wss://www.ccioi.com/ws/agent"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 IMG_DIR = os.path.join(BASE_DIR, "agent_images")
 AMAZON_SIGNIN_URL = "https://www.amazon.com/ap/signin"
@@ -805,7 +805,7 @@ def run_amazon_pollution(ws, task, loop):
 
 
             _send_log(f"任务结束：成功 {ok} 个，失败 {fail} 个")
-            # browser.close()
+            browser.close()
 
         debug_log("===== END Amazon Pollution Task (NEW FLOW) =====")
 
