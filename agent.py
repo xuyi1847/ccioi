@@ -17,7 +17,16 @@ print("[AGENT] Running in:", os.getcwd())
 SERVER_WS = "wss://www.ccioi.com/ws/agent"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 IMG_DIR = os.path.join(BASE_DIR, "agent_images")
-AMAZON_SIGNIN_URL = "https://www.amazon.com/ap/signin"
+AMAZON_SIGNIN_URL = (
+    "https://www.amazon.com/ap/signin"
+    "?openid.pape.max_auth_age=0"
+    "&openid.return_to=https%3A%2F%2Fwww.amazon.com%2F%3Fref_%3Dnav_signin"
+    "&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select"
+    "&openid.assoc_handle=usflex"
+    "&openid.mode=checkid_setup"
+    "&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select"
+    "&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0"
+)
 AMAZON_HOME_URL = "https://www.amazon.com/"
 OTP_EVENT = threading.Event()
 OTP_LOCK = threading.Lock()
@@ -639,33 +648,55 @@ def run_amazon_pollution(ws, task, loop):
             # ============ 1) 登录 ============
             signin_urls = [
                 login_url,
-                AMAZON_SIGNIN_URL,
-                "https://www.amazon.com/gp/sign-in.html",
                 AMAZON_HOME_URL,
+                "https://www.amazon.com/gp/sign-in.html",
+                AMAZON_SIGNIN_URL,
             ]
             signin_urls = [u for u in signin_urls if u]
+
+            def _has_signin_form() -> bool:
+                return (
+                    page.locator("input#ap_email").first.count() > 0
+                    or page.locator("input[name='email']").first.count() > 0
+                    or page.locator("input[type='email']").first.count() > 0
+                )
 
             _send_log("正在打开亚马逊登录页...")
             for u in signin_urls:
                 _send_log(f"打开页面：{u}")
-                page.goto(u, wait_until="domcontentloaded")
+                resp = page.goto(u, wait_until="domcontentloaded")
                 page.wait_for_timeout(800)
-                if page.locator("input#ap_email").first.count() > 0:
+                if resp is not None and resp.status >= 400:
+                    continue
+                if _has_signin_form():
                     _send_log("检测到登录表单。")
                     break
                 if page.locator('a#nav-link-accountList').first.count() > 0:
                     _send_log("点击 Account & Lists 进入登录。")
                     page.click('a#nav-link-accountList')
                     page.wait_for_timeout(800)
-                if page.locator("input#ap_email").first.count() > 0:
+                if _has_signin_form():
                     _send_log("检测到登录表单。")
                     break
 
-            if page.locator("input#ap_email").first.count() == 0:
-                raise RuntimeError("Signin form not found. Provide login_url in task params.")
+            if not _has_signin_form():
+                raise RuntimeError(
+                    "Signin form not found. Provide a login_url or check if the page requires manual verification."
+                )
 
-            page.fill("input#ap_email", username or "")
-            page.click("input#continue")
+            if page.locator("input#ap_email").first.count() > 0:
+                page.fill("input#ap_email", username or "")
+            else:
+                page.fill("input[name='email'], input[type='email']", username or "")
+
+            page.wait_for_timeout(1500)
+            # Some login variants don't have #continue; fall back to submit/Enter.
+            if page.locator("input#continue").first.count() > 0:
+                page.click("input#continue")
+            elif page.locator("button[type='submit']").first.count() > 0:
+                page.click("button[type='submit']")
+            else:
+                page.keyboard.press("Enter")
             _send_log("已提交账号，等待密码输入页。")
 
             try:

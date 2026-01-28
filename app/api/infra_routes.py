@@ -356,7 +356,7 @@ def build_torchrun_command(payload: dict,taskid: str) -> str:
     p = payload["parameters"]
     cmd = [
         "torchrun",
-        "--nproc_per_node", "2",
+        "--nproc_per_node", "1",
         "--standalone",
         "scripts/diffusion/inference.py",
         p["config"],
@@ -406,7 +406,7 @@ async def gpu_ws(ws: WebSocket):
         while True:
             msg = json.loads(await ws.receive_text())
             msg_type = msg.get("type")
-
+            print(msg)
             if msg_type == "heartbeat":
                 gpu_registry[gpu_id]["last_heartbeat"] = time.time()
                 continue
@@ -474,7 +474,11 @@ async def frontend_ws(ws: WebSocket):
         while True:
             raw = await ws.receive_text()
             data = json.loads(raw)
+            print("📨 Frontend WS message:", data)
 
+            task_id = str(uuid.uuid4())
+            command = build_torchrun_command(data,task_id)
+            print("🧠 Torchrun command:",command)
             # 允许前端发一个 init 消息先绑定用户
             # 约定：{type:"AUTH", token:"..."} 或 {token:"..."} 都可
             if ws_user_id is None:

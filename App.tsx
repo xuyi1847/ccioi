@@ -12,7 +12,6 @@ import {
   Play,
   Sparkles,
   History,
-  Link as LinkIcon,
   Zap,
   TrendingUp
 } from 'lucide-react';
@@ -35,15 +34,14 @@ import UserMenu from './components/UserMenu';
 import { LanguageProvider, useLanguage } from './context/LanguageContext';
 import LanguageSelector from './components/LanguageSelector';
 import { SocketProvider } from './context/SocketContext';
+import { NotificationProvider } from './context/NotificationContext';
 
-// --- App Content Wrapper ---
 const AppContent: React.FC = () => {
   const { t } = useLanguage();
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
   
-  // Centralized Modal States
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
@@ -64,11 +62,8 @@ const AppContent: React.FC = () => {
     { id: 3, url: 'https://yisvideo.oss-cn-shanghai.aliyuncs.com/videos/ceshi3.mp4', label: 'Runway Strides'}
   ];
 
-  // Handle Intro Animation
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setShowIntro(false);
-    }, 3000); 
+    const timer = setTimeout(() => setShowIntro(false), 3000); 
     return () => clearTimeout(timer);
   }, []);
 
@@ -121,8 +116,8 @@ const AppContent: React.FC = () => {
                       <div className="absolute top-3 left-3 px-2 py-1 bg-black/30 backdrop-blur-md rounded-full border border-white/10 flex items-center gap-1.5"><Play size={8} className="fill-white text-white" /><span className="text-[9px] font-bold text-white uppercase tracking-tighter">Demo</span></div>
                    </div>
                  ))}
-                 <div className="hidden sm:flex flex-col items-center justify-center aspect-[9/16] bg-app-surface/20 border-2 border-dashed border-app-border rounded-2xl md:rounded-3xl text-app-subtext gap-3 p-6 text-center"><div className="w-12 h-12 rounded-full border border-app-border flex items-center justify-center"><Sparkles size={20} className="opacity-20" /></div><p className="text-xs">Your creation could be here. Start generating today.</p></div>
-                 <div className="hidden sm:flex flex-col items-center justify-center aspect-[9/16] bg-app-surface/20 border-2 border-dashed border-app-border rounded-2xl md:rounded-3xl text-app-subtext gap-3 p-6 text-center"><div className="w-12 h-12 rounded-full border border-app-border flex items-center justify-center"><Video size={20} className="opacity-20" /></div><p className="text-xs text-balance">High-fidelity 9:16 portrait video production.</p></div>
+                 <div className="hidden sm:flex flex-col items-center justify-center aspect-[9/16] bg-app-surface/20 border-2 border-dashed border-app-border rounded-2xl md:rounded-3xl text-app-subtext gap-3 p-6 text-center"><div className="w-12 h-12 rounded-full border border-app-border flex items-center justify-center"><Sparkles size={20} className="opacity-20" /></div><p className="text-xs">Your creation could be here.</p></div>
+                 <div className="hidden sm:flex flex-col items-center justify-center aspect-[9/16] bg-app-surface/20 border-2 border-dashed border-app-border rounded-2xl md:rounded-3xl text-app-subtext gap-3 p-6 text-center"><div className="w-12 h-12 rounded-full border border-app-border flex items-center justify-center"><Video size={20} className="opacity-20" /></div><p className="text-xs text-balance">High-fidelity portrait production.</p></div>
               </div>
               <div className="mt-16 pt-8 border-t border-app-border text-center"><p className="text-xs text-app-subtext font-mono uppercase tracking-widest opacity-60">&copy; 2025 CCIOI.com // {t('app.icp')}</p></div>
             </div>
@@ -184,7 +179,7 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <LanguageProvider><AuthProvider><SocketProvider><ThemeProvider><AppContent /></ThemeProvider></SocketProvider></AuthProvider></LanguageProvider>
+    <LanguageProvider><AuthProvider><SocketProvider><ThemeProvider><NotificationProvider><AppContent /></NotificationProvider></ThemeProvider></SocketProvider></AuthProvider></LanguageProvider>
   );
 };
 
