@@ -93,14 +93,14 @@ const AudioTool: React.FC = () => {
     // 如果没有用户，提示登录
     if (!user) {
       console.error("[AudioTool] No user detected");
-      setProgressLog(prev => [...prev, "❌ Error: Please login first."]);
+      setProgressLog(prev => [...prev, `❌ Error: ${t('tool.chat.login_required')}`]);
       return;
     }
 
     // 如果脚本为空，提示输入
     if (!script.trim()) {
       console.warn("[AudioTool] Script is empty");
-      setProgressLog(prev => [...prev, "⚠️ Warning: Please enter a script."]);
+      setProgressLog(prev => [...prev, `⚠️ Warning: ${t('tool.audio.placeholder')}`]);
       return;
     }
 
@@ -265,7 +265,7 @@ const AudioTool: React.FC = () => {
               {!user && (
                 <div className="mb-4 p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-start gap-2 animate-fade-in">
                   <AlertCircle size={14} className="text-rose-500 mt-0.5 shrink-0" />
-                  <p className="text-[10px] text-rose-200/70 leading-relaxed uppercase tracking-tighter">Authentication required. Please sign in to use VibeVoice.</p>
+                  <p className="text-[10px] text-rose-200/70 leading-relaxed uppercase tracking-tighter">{t('tool.chat.login_required')}</p>
                 </div>
               )}
               

@@ -1,6 +1,15 @@
 
 import React from 'react';
 
+declare global {
+  interface Window {
+    aistudio: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
+  }
+}
+
 export enum AppView {
   DASHBOARD = 'DASHBOARD',
   CHAT = 'CHAT',

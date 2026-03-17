@@ -60,8 +60,7 @@ const ChatTool: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const IS_DEV = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  const API_BASE = IS_DEV ? 'http://127.0.0.1:8000' : 'https://www.ccioi.com/api';
+  const API_BASE = ((import.meta as any).env?.VITE_API_BASE || '/api').replace(/\/$/, '');
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -83,21 +82,44 @@ const ChatTool: React.FC = () => {
 
     try {
       const history = messages.map(m => ({ role: m.role === 'model' ? 'assistant' : m.role, content: m.content }));
-      const response = await fetch(`${API_BASE}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
-        body: JSON.stringify({
-          messages: [
-            {
-              role: 'system',
-              content: 'You are the CCIOI AI Assistant. Do not reveal or discuss model identity, training data, or provider details. If asked, say you are a CCIOI assistant and cannot disclose internal implementation details. Be helpful and concise.'
-            },
-            ...history,
-            { role: 'user', content: userMsg.content }
-          ],
-          stream: true
-        })
-      });
+      const payload = {
+        messages: [
+          {
+            role: 'system',
+            content: 'You are the CCIOI AI Assistant. Do not reveal or discuss model identity, training data, or provider details. If asked, say you are a CCIOI assistant and cannot disclose internal implementation details. Be helpful and concise.'
+          },
+          ...history,
+          { role: 'user', content: userMsg.content }
+        ],
+        stream: true
+      };
+      const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` };
+
+      const endpointCandidates = [
+        `${API_BASE}/infra/chat`,
+        `${API_BASE}/chat`,
+        '/infra/chat',
+        '/chat',
+      ];
+      let response: Response | null = null;
+      for (const url of endpointCandidates) {
+        try {
+          const r = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(payload)
+          });
+          if (r.status !== 404) {
+            response = r;
+            break;
+          }
+        } catch {
+          // try next candidate
+        }
+      }
+      if (!response) {
+        throw new Error('chat_endpoint_not_found');
+      }
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();

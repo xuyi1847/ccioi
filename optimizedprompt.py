@@ -1,7 +1,6 @@
 import base64
 import os
 from mimetypes import guess_type
-from openai import AzureOpenAI
 from openai import OpenAI
 import requests
 import re
@@ -63,11 +62,11 @@ Output format:
 User input:
 """
 def init_client():
-    return AzureOpenAI(
-        api_key="993b1a85094649778ce83003a5a5ad18",
-        api_version="2024-02-01",
-        azure_endpoint="https://aismwus3.openai.azure.com"
-    )
+    api_key = os.getenv("DEEPSEEK_API_KEY") or os.getenv("CCIOI_API_KEY")
+    base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+    if not api_key:
+        return None
+    return OpenAI(api_key=api_key, base_url=base_url)
 
 def image_to_url(image_path):
     mime_type, _ = guess_type(image_path)
@@ -116,8 +115,11 @@ def refine_prompt(prompt: str, retry_times: int = 3, type: str = "t2v", image_pa
     """
 
     client = init_client()
+    if client is None:
+        return prompt
     text = prompt.strip()
     response = None
+    model_name = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
     for i in range(retry_times):
         if type == "t2v":
             response = client.chat.completions.create(
@@ -152,7 +154,7 @@ def refine_prompt(prompt: str, retry_times: int = 3, type: str = "t2v", image_pa
                         "content": f'Create an imaginative video descriptive caption or modify an earlier caption in ENGLISH for the user input: " {text} "',
                     },
                 ],
-                model="gpt4o",  # glm-4-plus and gpt4o have be tested
+                model=model_name,
                 temperature=0.01,
                 top_p=0.7,
                 stream=False,
@@ -183,7 +185,7 @@ def refine_prompt(prompt: str, retry_times: int = 3, type: str = "t2v", image_pa
                         "content": f'Create an imaginative image descriptive caption or modify an earlier caption in ENGLISH for the user input: " {text} "',
                     },
                 ],
-                model="gpt4o",  # glm-4-plus and gpt4o have be tested
+                model=model_name,
                 temperature=0.01,
                 top_p=0.7,
                 stream=False,
@@ -191,7 +193,7 @@ def refine_prompt(prompt: str, retry_times: int = 3, type: str = "t2v", image_pa
             )
         elif type == "i2v":
             response = client.chat.completions.create(
-                model="gpt4o",
+                model=model_name,
                 messages=[
                     {"role": "system", "content": f"{sys_prompt_i2v}"},
                     {
@@ -248,7 +250,7 @@ def refine_prompt(prompt: str, retry_times: int = 3, type: str = "t2v", image_pa
                         "content": f"{text}",
                     },
                 ],
-                model="gpt4o",  # glm-4-plus and gpt4o have be tested
+                model=model_name,
                 temperature=0.01,
                 top_p=0.7,
                 stream=False,

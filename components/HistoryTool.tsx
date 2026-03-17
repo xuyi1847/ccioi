@@ -53,7 +53,7 @@ const HistoryTool: React.FC = () => {
     return isNaN(date.getTime()) ? 'N/A' : date.toLocaleString();
   };
 
-  if (!user) return <div className="h-full flex flex-col items-center justify-center text-center p-12 bg-app-surface/30 rounded-3xl border border-app-border border-dashed"><div className="w-20 h-20 bg-app-base rounded-full flex items-center justify-center mb-6 text-app-subtext/20"><Lock size={40} /></div><h3 className="text-xl font-bold text-app-text mb-2">Access Restricted</h3><p className="text-app-subtext max-w-xs">Please login to view history.</p></div>;
+  if (!user) return <div className="h-full flex flex-col items-center justify-center text-center p-12 bg-app-surface/30 rounded-3xl border border-app-border border-dashed"><div className="w-20 h-20 bg-app-base rounded-full flex items-center justify-center mb-6 text-app-subtext/20"><Lock size={40} /></div><h3 className="text-xl font-bold text-app-text mb-2">{t('tool.chat.login_required')}</h3></div>;
 
   return (
     <div className="h-full flex flex-col gap-6 animate-fade-in overflow-hidden flex-1 tracking-tight">
@@ -61,7 +61,7 @@ const HistoryTool: React.FC = () => {
         <div><h2 className="text-2xl font-bold text-app-text flex items-center gap-3"><History className="text-app-accent" size={28} />{t('tool.history.title')}</h2>
           <p className="text-app-subtext text-sm">{isLoading ? 'Syncing...' : t('tool.history.video_count').replace('{{count}}', history.length.toString())}</p>
         </div>
-        <button onClick={loadHistory} disabled={isLoading} className="flex items-center gap-2 px-4 py-2 bg-app-surface-hover hover:bg-app-border text-app-text rounded-xl text-xs font-bold border border-app-border disabled:opacity-50"><RefreshCcw size={14} className={isLoading ? 'animate-spin' : ''} />{isLoading ? 'Loading' : 'Refresh'}</button>
+        <button onClick={loadHistory} disabled={isLoading} className="flex items-center gap-2 px-4 py-2 bg-app-surface-hover hover:bg-app-border text-app-text rounded-xl text-xs font-bold border border-app-border disabled:opacity-50"><RefreshCcw size={14} className={isLoading ? 'animate-spin' : ''} />{isLoading ? t('pay.processing') : 'Refresh'}</button>
       </div>
       {isLoading && history.length === 0 ? <div className="flex-1 flex flex-col items-center justify-center"><Loader2 className="w-12 h-12 text-app-accent animate-spin opacity-20" /><p className="mt-4 text-app-subtext font-mono text-xs uppercase tracking-widest animate-pulse">Fetching Cloud Assets...</p></div> :
         error ? <div className="flex-1 flex flex-col items-center justify-center text-center p-12 bg-red-500/5 rounded-3xl border border-red-500/10"><p className="text-red-400 mb-4">{error}</p><button onClick={loadHistory} className="text-app-accent hover:underline text-sm font-bold">Try Again</button></div> :

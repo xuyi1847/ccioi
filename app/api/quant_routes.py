@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -11,9 +12,12 @@ from app.services.asset_eval import estimate_asset_caps
 from app.services.policy import load_policy, resolve_asset_cap
 from app.services.signal import evaluate_single_asset
 from app.services.summary import summarize_signal, summarize_portfolio
-from app.services.ak_tools import get_fund_daily_history, get_fund_daily_summary
+from app.services.ak_tools import get_fund_daily_history, get_fund_daily_summary, get_fund_intraday_estimate
+from app.services.fund_intraday_store import get_fund_intraday_store
 
 router = APIRouter(prefix="/quant")
+
+_fund_intraday_store = get_fund_intraday_store()
 
 class QuantChatReq(BaseModel):
     messages: list[dict]
@@ -196,3 +200,88 @@ async def quant_chat(req: QuantChatReq):
         stream=False,
     )
     return {"content": response.choices[0].message.content}
+
+
+@router.get("/fund_intraday_estimate")
+async def fund_intraday_estimate(
+    code: str,
+    stream: bool = False,
+    interval: int = 15,
+    amount: float = 10000.0,
+    invest_amount: Optional[float] = None,
+    top_n: int = 100,
+    year: Optional[str] = None,
+):
+    """
+    Estimate intraday fund NAV based on holdings weights and realtime stock changes.
+    """
+    code = str(code or "").strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing fund code")
+    if not code.isdigit() or len(code) != 6:
+        raise HTTPException(status_code=400, detail="Fund code must be a 6-digit number")
+    if invest_amount is not None:
+        amount = float(invest_amount)
+    interval = max(3, min(int(interval), 120))
+
+    if not stream:
+        _fund_intraday_store.save(
+            {
+                "ts": time.time(),
+                "code": code,
+                "amount": amount,
+                "top_n": top_n,
+                "year": year,
+            }
+        )
+        try:
+            result = get_fund_intraday_estimate(code, invest_amount=amount, top_n=top_n, year=year)
+            return result
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+    def stream_generator():
+        while True:
+            _fund_intraday_store.save(
+                {
+                    "ts": time.time(),
+                    "code": code,
+                    "amount": amount,
+                    "top_n": top_n,
+                    "year": year,
+                }
+            )
+            try:
+                payload = get_fund_intraday_estimate(code, invest_amount=amount, top_n=top_n, year=year)
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            except Exception as exc:
+                yield f"data: {json.dumps({'error': str(exc)}, ensure_ascii=False)}\n\n"
+            time.sleep(interval)
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@router.get("/fund_intraday_history")
+async def fund_intraday_history():
+    records = _fund_intraday_store.list(limit=500)
+    unique = {}
+    for r in records:
+        code = str(r.get("code") or "")
+        if not code or code in unique:
+            continue
+        unique[code] = {
+            "code": code,
+            "invest_amount": r.get("amount"),
+            "top_n": r.get("top_n"),
+            "year": r.get("year"),
+            "ts": r.get("ts"),
+        }
+    result = list(unique.values())
+    return {"count": len(result), "records": result}

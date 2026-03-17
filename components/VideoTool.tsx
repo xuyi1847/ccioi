@@ -35,6 +35,7 @@ const VideoTool: React.FC = () => {
   const [numFrames, setNumFrames] = useState(112);
   const [aspectRatio, setAspectRatio] = useState('9:16');
   const [fps, setFps] = useState(16);
+  const [nprocPerNode, setNprocPerNode] = useState(1);
   const [motionScore, setMotionScore] = useState(6);
   const [refImage, setRefImage] = useState<string | null>(null);
   const [refImageUrl, setRefImageUrl] = useState<string | null>(null);
@@ -73,7 +74,7 @@ const VideoTool: React.FC = () => {
             const newRecord: HistoryRecord = {
               id: data.task_id || Date.now().toString(),
               type: 'video', prompt, url: data.output.public_url, timestamp: Date.now(),
-              params: { config: configFile, cond: condType, steps: numSteps, frames: numFrames, fps, motion_score: motionScore }
+              params: { config: configFile, cond: condType, steps: numSteps, frames: numFrames, fps, nproc_per_node: nprocPerNode, motion_score: motionScore }
             };
             const existingHistory = JSON.parse(localStorage.getItem('ccioi_video_history') || '[]');
             localStorage.setItem('ccioi_video_history', JSON.stringify([newRecord, ...existingHistory]));
@@ -86,7 +87,7 @@ const VideoTool: React.FC = () => {
         }
       } catch (e) {}
     }
-  }, [lastMessage, prompt, configFile, condType, numSteps, numFrames, fps, motionScore, disconnect, notify]);
+  }, [lastMessage, prompt, configFile, condType, numSteps, numFrames, fps, nprocPerNode, motionScore, disconnect, notify]);
 
   const handleOptimize = async () => {
     if (!prompt.trim() || isOptimizing) return;
@@ -131,7 +132,7 @@ const VideoTool: React.FC = () => {
       if (!isConnected) await connect();
       sendCommand({
         type: 'TASK_EXECUTION', task: 'VIDEO_GENERATION', token: user.token, timestamp: new Date().toISOString(),
-        parameters: { prompt: prompt.replace(/"/g, '\\"'), config: configFile, cond: condType, steps: numSteps, frames: numFrames, ratio: aspectRatio, fps, motion_score: motionScore, ref_image: refImageUrl }
+        parameters: { prompt: prompt.replace(/"/g, '\\"'), config: configFile, cond: condType, steps: numSteps, frames: numFrames, ratio: aspectRatio, fps, nproc_per_node: nprocPerNode, motion_score: motionScore, ref_image: refImageUrl }
       });
       notify.info("Task dispatched to CCIOI Cluster.");
     } catch (err) {
@@ -181,10 +182,11 @@ const VideoTool: React.FC = () => {
               <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.frames')}</label><input type="number" value={numFrames} onChange={e => setNumFrames(parseInt(e.target.value))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
               <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.aspect_ratio')}</label><input type="text" value={aspectRatio} onChange={e => setAspectRatio(e.target.value)} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
               <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.fps')}</label><input type="number" value={fps} onChange={e => setFps(parseInt(e.target.value))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
+              <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.nproc_per_node')}</label><input type="number" min={1} value={nprocPerNode} onChange={e => setNprocPerNode(Math.max(1, parseInt(e.target.value) || 1))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
             </div>
             <button onClick={handleDispatch} disabled={isGenerating || isUploading} className={`w-full py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition-all uppercase tracking-widest text-[10px] ${!user ? 'bg-app-surface text-app-subtext border border-app-border cursor-not-allowed' : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 text-white shadow-cyan-900/30'}`}>
               {isGenerating || isConnecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : !user ? <Lock className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-              {!user ? 'Login Required' : isConnecting ? 'Connecting...' : isGenerating ? 'Processing' : t('tool.video.generate')}
+              {!user ? t('tool.chat.login_required') : isConnecting ? 'Connecting...' : isGenerating ? 'Processing' : t('tool.video.generate')}
             </button>
           </div>
         </div>

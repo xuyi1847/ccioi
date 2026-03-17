@@ -5,10 +5,12 @@ import ReactMarkdown from 'react-markdown';
 import { analyzeText } from '../services/geminiService';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
+import { useNotification } from '../context/NotificationContext';
 
 const TextTool: React.FC = () => {
   const { t } = useLanguage();
   const { user } = useAuth();
+  const { notify } = useNotification();
   const [text, setText] = useState('');
   const [analysisType, setAnalysisType] = useState<'SUMMARY' | 'SENTIMENT' | 'KEYWORDS'>('SUMMARY');
   const [result, setResult] = useState('');
@@ -16,7 +18,7 @@ const TextTool: React.FC = () => {
 
   const handleAnalyze = async () => {
     if (!user) {
-      alert("Please login to analyze text.");
+      notify.error(t('tool.chat.login_required'));
       return;
     }
     if (!text) return;
@@ -86,7 +88,7 @@ const TextTool: React.FC = () => {
               </>
             ) : !user ? (
               <>
-                <Lock className="w-5 h-5" /> Login Required
+                <Lock className="w-5 h-5" /> {t('tool.chat.login_required')}
               </>
             ) : (
               <>

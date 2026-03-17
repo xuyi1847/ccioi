@@ -58,8 +58,7 @@ const AmazonPollutionTool: React.FC = () => {
   const [selectedRun, setSelectedRun] = useState<string>('');
 
   const logEndRef = useRef<HTMLDivElement>(null);
-  const IS_DEV = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  const API_BASE = IS_DEV ? 'http://127.0.0.1:8000' : 'https://www.ccioi.com/api';
+  const API_BASE = ((import.meta as any).env?.VITE_API_BASE || '/api').replace(/\/$/, '');
 
   useEffect(() => {
     if (logEndRef.current) logEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -100,7 +99,7 @@ const AmazonPollutionTool: React.FC = () => {
 
   const handleStartTask = async () => {
     if (!user) {
-      notify.error("Authentication required. Please sign in.");
+      notify.error(t('tool.chat.login_required'));
       return;
     }
     if (!amazonUser || !amazonPass || !loginUrl || !productUrl || !keywords) {
@@ -208,7 +207,7 @@ const AmazonPollutionTool: React.FC = () => {
             <div className="flex gap-3">
               <button onClick={isProcessing ? handleStopTask : handleStartTask} disabled={isConnecting} className={`flex-1 py-3.5 rounded-2xl font-bold uppercase tracking-widest text-[11px] shadow-lg flex items-center justify-center gap-2 transition-all ${isProcessing ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-amber-900/30'}`}>
                 {isConnecting ? <Loader2 className="animate-spin w-4 h-4" /> : isProcessing ? <StopCircle className="w-4 h-4" /> : <Play className="w-4 h-4 fill-current" />}
-                {isConnecting ? 'Connecting' : isProcessing ? t('tool.amazon.stop') : t('tool.amazon.start')}
+                {isConnecting ? 'Connecting...' : isProcessing ? t('tool.amazon.stop') : t('tool.amazon.start')}
               </button>
               <button onClick={queryPerformance} disabled={isQuerying || keywords.length === 0} className="w-14 bg-app-surface-hover border border-app-border rounded-2xl flex items-center justify-center text-app-subtext hover:text-white transition-all disabled:opacity-20 shadow-lg">
                 {isQuerying ? <Loader2 className="animate-spin w-4 h-4" /> : <BarChart3 className="w-5 h-5" />}

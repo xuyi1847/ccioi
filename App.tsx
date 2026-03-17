@@ -44,6 +44,7 @@ const AppContent: React.FC = () => {
   
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const isQuantView = currentView === AppView.QUANTITATIVE_ANALYSIS;
 
   const tools: ToolConfig[] = [
     { id: AppView.CHAT, name: t('nav.chat'), description: t('nav.chat.desc'), icon: MessageSquare, color: 'text-indigo-400' },
@@ -149,7 +150,14 @@ const AppContent: React.FC = () => {
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        <header className="h-20 flex items-center justify-between px-4 lg:px-8 border-b border-app-border bg-app-surface/90 backdrop-blur-md z-[60] shrink-0">
+        {isQuantView && (
+          <div className="fixed top-3 right-4 z-[90] hidden md:flex items-center gap-2 px-2 py-1 rounded-full border border-app-border bg-app-surface/85 backdrop-blur-md">
+            <LanguageSelector />
+            <ThemeSelector />
+            <UserMenu compact onOpenAuth={() => setIsAuthModalOpen(true)} onOpenPayment={() => setIsPaymentModalOpen(true)} />
+          </div>
+        )}
+        {!isQuantView && <header className="h-20 flex items-center justify-between px-4 lg:px-8 border-b border-app-border bg-app-surface/90 backdrop-blur-md z-[60] shrink-0">
           <div className="flex items-center gap-4">
             <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 text-app-subtext hover:text-app-text transition-colors"><Menu size={20} /></button>
             <div className="lg:hidden"><Logo size="sm" /></div>
@@ -161,11 +169,11 @@ const AppContent: React.FC = () => {
             <div className="flex items-center gap-1 border-r border-app-border pr-3 md:pr-4 mr-1"><LanguageSelector /><ThemeSelector /></div>
             <UserMenu onOpenAuth={() => setIsAuthModalOpen(true)} onOpenPayment={() => setIsPaymentModalOpen(true)} />
           </div>
-        </header>
+        </header>}
 
-        <div className="flex-1 flex flex-col min-h-0 relative p-4 lg:p-6 overflow-hidden">
-           <div className="fixed inset-0 overflow-hidden pointer-events-none z-0"><div className="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] bg-app-accent/5 rounded-full blur-[100px]" /><div className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] bg-app-surface-hover/20 rounded-full blur-[100px]" /></div>
-           <div className="relative z-10 max-w-7xl mx-auto w-full h-full flex flex-col min-h-0">
+        <div className={`flex-1 flex flex-col min-h-0 relative ${currentView === AppView.QUANTITATIVE_ANALYSIS ? 'p-0 overflow-y-auto' : 'overflow-hidden p-4 lg:p-6'}`}>
+           {!isQuantView && <div className="fixed inset-0 overflow-hidden pointer-events-none z-0"><div className="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] bg-app-accent/5 rounded-full blur-[100px]" /><div className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] bg-app-surface-hover/20 rounded-full blur-[100px]" /></div>}
+           <div className={`relative z-10 w-full h-full flex flex-col min-h-0 ${currentView === AppView.QUANTITATIVE_ANALYSIS ? '' : 'max-w-7xl mx-auto'}`}>
              {renderContent()}
            </div>
         </div>

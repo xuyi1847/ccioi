@@ -257,6 +257,11 @@ async def ccioi_chat(req: DeepSeekChatReq):
     )
     return {"content": response.choices[0].message.content}
 
+
+@router.post("/infra/chat")
+async def ccioi_chat_compat(req: DeepSeekChatReq):
+    return await ccioi_chat(req)
+
 # =========================================================
 # UPLOAD API (Frontend -> Server -> OSS)
 # =========================================================
@@ -354,9 +359,13 @@ def build_torchrun_command(payload: dict,taskid: str) -> str:
     - ref_image 为 None 时，不传 --cond_type / --ref
     """
     p = payload["parameters"]
+    try:
+        nproc_per_node = max(1, int(p.get("nproc_per_node", 1)))
+    except (TypeError, ValueError):
+        nproc_per_node = 1
     cmd = [
         "torchrun",
-        "--nproc_per_node", "1",
+        "--nproc_per_node", str(nproc_per_node),
         "--standalone",
         "scripts/diffusion/inference.py",
         p["config"],

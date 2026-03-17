@@ -20,7 +20,10 @@
     "jsx": "react-jsx",
     "paths": {
       "@/*": [
-        "./*"
+        "./real-time-fund/*"
+      ],
+      "next/image": [
+        "./services/nextImageShim.tsx"
       ]
     },
     "allowImportingTsExtensions": true,

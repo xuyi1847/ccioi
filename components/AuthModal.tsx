@@ -60,7 +60,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               {isLogin ? t('auth.welcome_back') : t('auth.create_account')}
             </h2>
             <p className="text-app-subtext text-xs">
-              {isLogin ? 'Enter your details to access CCIOI tools' : 'Join us to explore the power of Generative AI'}
+              {isLogin ? t('auth.login_desc') : t('auth.signup_desc')}
             </p>
           </div>
 
@@ -75,7 +75,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                       type="text"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="Your Name"
+                      placeholder={t('auth.name_placeholder')}
                       className="w-full bg-app-surface-hover border border-app-border rounded-xl py-2.5 pl-10 pr-4 text-app-text text-sm outline-none focus:border-app-accent transition-colors"
                       required
                     />
@@ -83,14 +83,14 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-app-subtext uppercase tracking-wider">Invite Code</label>
+                  <label className="text-[10px] font-bold text-app-subtext uppercase tracking-wider">{t('auth.invite_code')}</label>
                   <div className="relative">
                     <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-app-subtext w-4 h-4" />
                     <input
                       type="text"
                       value={inviteCode}
                       onChange={(e) => setInviteCode(e.target.value)}
-                      placeholder="CCIOI-XXXX-XXXX"
+                      placeholder={t('auth.invite_code_placeholder')}
                       className="w-full bg-app-surface-hover border border-app-border rounded-xl py-2.5 pl-10 pr-4 text-app-text text-sm outline-none focus:border-app-accent transition-colors"
                       required
                     />
