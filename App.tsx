@@ -38,7 +38,18 @@ import { NotificationProvider } from './context/NotificationContext';
 
 const AppContent: React.FC = () => {
   const { t } = useLanguage();
-  const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
+  const resolveViewFromPath = (pathname: string): AppView => {
+    if (pathname === '/fund') return AppView.QUANTITATIVE_ANALYSIS;
+    return AppView.DASHBOARD;
+  };
+  const resolvePathFromView = (view: AppView): string => {
+    if (view === AppView.QUANTITATIVE_ANALYSIS) return '/fund';
+    return '/';
+  };
+  const [currentView, setCurrentView] = useState<AppView>(() => {
+    if (typeof window === 'undefined') return AppView.DASHBOARD;
+    return resolveViewFromPath(window.location.pathname);
+  });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
   
@@ -67,6 +78,22 @@ const AppContent: React.FC = () => {
     const timer = setTimeout(() => setShowIntro(false), 3000); 
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    const onPopState = () => {
+      setCurrentView(resolveViewFromPath(window.location.pathname));
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const targetPath = resolvePathFromView(currentView);
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+    }
+  }, [currentView]);
 
   const renderContent = () => {
     switch (currentView) {

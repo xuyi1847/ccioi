@@ -21,6 +21,13 @@ const Logo: React.FC<LogoProps> = ({ size = 'sm', autoAnimate = false, className
   }, [autoAnimate]);
 
   const toggle = () => setActive(!active);
+  const handleClick = () => {
+    if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+      window.location.href = '/';
+      return;
+    }
+    toggle();
+  };
 
   // Size classes
   // Reduced tracking and gap significantly
@@ -38,7 +45,7 @@ const Logo: React.FC<LogoProps> = ({ size = 'sm', autoAnimate = false, className
   return (
     <div 
       className={`font-bold font-mono flex items-center justify-center cursor-pointer select-none group ${containerClass} ${className}`}
-      onClick={toggle}
+      onClick={handleClick}
       onMouseEnter={() => !autoAnimate && setActive(true)}
       onMouseLeave={() => !autoAnimate && setActive(false)}
     >
