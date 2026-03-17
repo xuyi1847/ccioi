@@ -1,6 +1,6 @@
 import React from 'react';
 import HomePage from '../real-time-fund/app/page.jsx';
-import rtfCssHref from '../real-time-fund/app/globals.css?url';
+const rtfCssHref = new URL('../real-time-fund/app/globals.css', import.meta.url).href;
 
 const QuantTool: React.FC = () => {
   React.useEffect(() => {
