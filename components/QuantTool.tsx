@@ -21,7 +21,7 @@ const QuantTool: React.FC = () => {
       style.textContent = `
         .navbar {
           position: fixed !important;
-          top: 0 !important;
+          top: 80px !important;
         }
         @media (min-width: 1024px) {
           .navbar {
@@ -37,11 +37,14 @@ const QuantTool: React.FC = () => {
         }
         @media (max-width: 640px) {
           .navbar {
+            top: 80px !important;
             left: 0 !important;
             right: 0 !important;
           }
+          .content {
+            padding-top: 0 !important;
+          }
         }
-        .navbar .actions { display: none !important; }
         .navbar .navbar-add-fund {
           flex: 1 1 720px !important;
           max-width: 760px !important;

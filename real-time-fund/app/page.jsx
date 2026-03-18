@@ -1245,11 +1245,12 @@ export default function HomePage() {
         }
 
         const alreadyAdded = existingCodes.has(code);
-        const ok = !!found && !alreadyAdded;
+        const ok = !!found;
         results.push({
           code,
           name: found ? (found.NAME || found.SHORTNAME || '') : (fundInfo?.fundName || ''),
-          status: alreadyAdded ? 'added' : (ok ? 'ok' : 'invalid'),
+          status: ok ? 'ok' : 'invalid',
+          alreadyAdded,
           holdAmounts: fundInfo?.holdAmounts || '',
           holdGains: fundInfo?.holdGains || ''
         });
@@ -1318,7 +1319,6 @@ export default function HomePage() {
         const code = codes[i];
         setScanImportProgress(prev => ({ ...prev, current: i + 1 }));
 
-        if (funds.some(existing => existing.code === code)) continue;
         try {
           const data = await fetchFundData(code);
           newFunds.push(data);
@@ -1348,19 +1348,13 @@ export default function HomePage() {
       }
 
       if (newFunds.length > 0) {
-        setFunds(prev => {
-          const updated = dedupeByCode([...newFunds, ...prev]);
-          storageHelper.setItem('funds', JSON.stringify(updated));
-          return updated;
-        });
+        const replacedFunds = dedupeByCode(newFunds);
+        setFunds(replacedFunds);
+        storageHelper.setItem('funds', JSON.stringify(replacedFunds));
 
-        if (Object.keys(newHoldings).length > 0) {
-          setHoldings(prev => {
-            const next = { ...prev, ...newHoldings };
-            storageHelper.setItem('holdings', JSON.stringify(next));
-            return next;
-          });
-        }
+        // 图片识别导入采用全量替换，不保留历史持仓增量
+        setHoldings(newHoldings);
+        storageHelper.setItem('holdings', JSON.stringify(newHoldings));
 
         const nextSeries = {};
         newFunds.forEach(u => {
@@ -1371,12 +1365,9 @@ export default function HomePage() {
         if (Object.keys(nextSeries).length > 0) setValuationSeries(prev => ({ ...prev, ...nextSeries }));
 
         if (targetGroupId === 'fav') {
-          setFavorites(prev => {
-            const next = new Set(prev);
-            codes.forEach(code => next.add(code));
-            storageHelper.setItem('favorites', JSON.stringify(Array.from(next)));
-            return next;
-          });
+          const next = new Set(codes);
+          setFavorites(next);
+          storageHelper.setItem('favorites', JSON.stringify(Array.from(next)));
           setCurrentTab('fav');
         } else if (targetGroupId && targetGroupId !== 'all') {
           setGroups(prev => {
@@ -1384,7 +1375,7 @@ export default function HomePage() {
               if (g.id === targetGroupId) {
                 return {
                   ...g,
-                  codes: Array.from(new Set([...g.codes, ...codes]))
+                  codes: Array.from(new Set(codes))
                 };
               }
               return g;
@@ -2328,12 +2319,9 @@ export default function HomePage() {
         }
       }
       if (added.length > 0) {
-        setFunds(prev => {
-          const merged = [...prev, ...added];
-          const deduped = Array.from(new Map(merged.map(f => [f.code, f])).values());
-          storageHelper.setItem('funds', JSON.stringify(deduped));
-          return deduped;
-        });
+        const replaced = Array.from(new Map(added.map(f => [f.code, f])).values());
+        setFunds(replaced);
+        storageHelper.setItem('funds', JSON.stringify(replaced));
         const nextSeries = {};
         added.forEach(u => {
           if (u?.code != null && !u.noValuation && Number.isFinite(Number(u.gsz))) {
@@ -3444,12 +3432,12 @@ export default function HomePage() {
       </AnimatePresence>
       <Announcement />
       <div className="navbar glass" ref={navbarRef}>
-        {refreshing && <div className="loading-bar"></div>}
+        {/* {refreshing && <div className="loading-bar"></div>}
         <div className={`brand ${(isSearchFocused || selectedFunds.length > 0) ? 'search-focused-sibling' : ''}`}>
           <div style={{ marginRight: 6, lineHeight: 0 }} title={isSyncing ? '正在同步到云端...' : undefined}>
             <Logo size="sm" />
           </div>
-        </div>
+        </div> */}
         <div className={`glass add-fund-section navbar-add-fund ${(isSearchFocused || selectedFunds.length > 0) ? 'search-focused' : ''}`} role="region" aria-label="添加基金">
           <div className="search-container" ref={dropdownRef}>
             {selectedFunds.length > 0 && (
@@ -3512,6 +3500,13 @@ export default function HomePage() {
               >
                 {loading ? '添加中…' : '添加'}
               </button>
+              <RefreshButton
+                refreshMs={refreshMs}
+                manualRefresh={manualRefresh}
+                refreshing={refreshing}
+                fundsLength={funds.length}
+                refreshCycleStartRef={refreshCycleStartRef}
+              />
             </form>
 
             <AnimatePresence>
@@ -3561,8 +3556,8 @@ export default function HomePage() {
           </div>
           {error && <div className="muted" style={{ marginTop: 8, color: 'var(--danger)' }}>{error}</div>}
         </div>
-        <div className={`actions ${(isSearchFocused || selectedFunds.length > 0) ? 'search-focused-sibling' : ''}`}>
-          {hasUpdate && (
+        {/* <div className={`actions ${(isSearchFocused || selectedFunds.length > 0) ? 'search-focused-sibling' : ''}`}> */}
+          {/* {hasUpdate && (
             <div
               className="badge"
               title={`发现新版本 ${latestVersion}，点击前往下载`}
@@ -3591,7 +3586,7 @@ export default function HomePage() {
             refreshing={refreshing}
             fundsLength={funds.length}
             refreshCycleStartRef={refreshCycleStartRef}
-          />
+          /> */}
           {/*<button*/}
           {/*  className="icon-button"*/}
           {/*  aria-label="打开设置"*/}
@@ -3601,16 +3596,16 @@ export default function HomePage() {
           {/*>*/}
           {/*  <SettingsIcon width="18" height="18" />*/}
           {/*</button>*/}
-          <button
+          {/* <button
             className="icon-button"
             aria-label={theme === 'dark' ? '切换到亮色主题' : '切换到暗色主题'}
             onClick={handleThemeToggle}
             title={theme === 'dark' ? '亮色' : '暗色'}
           >
             {theme === 'dark' ? <SunIcon width="18" height="18" /> : <MoonIcon width="18" height="18" />}
-          </button>
+          </button> */}
           {/* 用户菜单 */}
-          <div className="user-menu-container" ref={userMenuRef}>
+          {/* <div className="user-menu-container" ref={userMenuRef}>
             <button
               className={`icon-button user-menu-trigger ${user ? 'logged-in' : ''}`}
               aria-label={user ? '用户菜单' : '登录'}
@@ -3740,8 +3735,8 @@ export default function HomePage() {
                 </motion.div>
               )}
             </AnimatePresence>
-          </div>
-        </div>
+          </div> */}
+        {/* </div> */}
       </div>
 
       <div className="grid">

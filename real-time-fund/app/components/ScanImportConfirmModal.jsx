@@ -73,9 +73,9 @@ export default function ScanImportConfirmModal({
             <div className="search-results pending-list" style={{ maxHeight: 360, overflowY: 'auto' }}>
               {scannedFunds.map((item) => {
                 const isSelected = selectedScannedCodes.has(item.code);
-                const isAlreadyAdded = item.status === 'added';
+                const isAlreadyAdded = item.alreadyAdded || item.status === 'added';
                 const isInvalid = item.status === 'invalid';
-                const isDisabled = isAlreadyAdded || isInvalid;
+                const isDisabled = isInvalid;
                 const displayName = item.name || (isInvalid ? '未找到基金' : '未知基金');
                 const holdAmounts = formatAmount(item.holdAmounts);
                 const holdGains = formatAmount(item.holdGains);
@@ -96,17 +96,20 @@ export default function ScanImportConfirmModal({
                         <span className="fund-name">{displayName}</span>
                         <span className="fund-code muted">#{item.code}</span>
                       </div>
-                      {isAlreadyAdded ? (
-                        <span className="added-label">已添加</span>
-                      ) : isInvalid ? (
+                      {isInvalid ? (
                         <span className="added-label">未找到</span>
                       ) : (
-                        <div className="checkbox">
-                          {isSelected && <div className="checked-mark" />}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          {isAlreadyAdded && (
+                            <span className="added-label" title="将覆盖现有基金数据">已存在</span>
+                          )}
+                          <div className="checkbox">
+                            {isSelected && <div className="checked-mark" />}
+                          </div>
                         </div>
                       )}
                     </div>
-                    {hasHoldingData && !isDisabled && (
+                    {hasHoldingData && !isInvalid && (
                       <div style={{ display: 'flex', gap: 16, marginTop: 6, paddingLeft: 0 }}>
                         {holdAmounts !== null && (
                           <span className="muted" style={{ fontSize: 12 }}>
@@ -145,7 +148,7 @@ export default function ScanImportConfirmModal({
         )}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
           <button className="button secondary" onClick={onClose}>取消</button>
-          <button className="button" onClick={handleConfirm} disabled={selectedScannedCodes.size === 0 || refreshing}>确认导入</button>
+          <button className="button" onClick={handleConfirm} disabled={selectedScannedCodes.size === 0}>确认导入</button>
         </div>
       </motion.div>
     </motion.div>

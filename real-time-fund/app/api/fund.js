@@ -718,7 +718,7 @@ export const fetchFundHistory = async (code, range = '1m') => {
 export const parseFundTextWithLLM = async (text) => {
   if (!text) return null;
 
-  const backendBase = ((import.meta?.env?.VITE_API_BASE) || '/api').replace(/\/$/, '');
+  const chatEndpoint = (((import.meta?.env?.VITE_CHAT_ENDPOINT) || '/api/infra/chat')).replace(/\/$/, '');
 
   try {
     const payload = {
@@ -731,29 +731,11 @@ export const parseFundTextWithLLM = async (text) => {
     };
     const headers = { 'Content-Type': 'application/json' };
 
-    const endpointCandidates = [
-      `${backendBase}/infra/chat`,
-      `${backendBase}/chat`,
-      '/infra/chat',
-      '/chat',
-    ];
-    let response = null;
-    for (const url of endpointCandidates) {
-      try {
-        const r = await fetch(url, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(payload)
-        });
-        if (r.status !== 404) {
-          response = r;
-          break;
-        }
-      } catch (e) {
-        // try next candidate
-      }
-    }
-    if (!response) return null;
+    const response = await fetch(chatEndpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload)
+    });
 
     if (!response.ok) {
       return null;

@@ -60,7 +60,7 @@ const ChatTool: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const API_BASE = ((import.meta as any).env?.VITE_API_BASE || '/api').replace(/\/$/, '');
+  const CHAT_ENDPOINT = (((import.meta as any).env?.VITE_CHAT_ENDPOINT as string) || '/api/infra/chat').replace(/\/$/, '');
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -95,30 +95,13 @@ const ChatTool: React.FC = () => {
       };
       const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` };
 
-      const endpointCandidates = [
-        `${API_BASE}/infra/chat`,
-        `${API_BASE}/chat`,
-        '/infra/chat',
-        '/chat',
-      ];
-      let response: Response | null = null;
-      for (const url of endpointCandidates) {
-        try {
-          const r = await fetch(url, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(payload)
-          });
-          if (r.status !== 404) {
-            response = r;
-            break;
-          }
-        } catch {
-          // try next candidate
-        }
-      }
-      if (!response) {
-        throw new Error('chat_endpoint_not_found');
+      const response = await fetch(CHAT_ENDPOINT, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        throw new Error(`chat_request_failed_${response.status}`);
       }
 
       const reader = response.body?.getReader();
