@@ -718,7 +718,10 @@ export const fetchFundHistory = async (code, range = '1m') => {
 export const parseFundTextWithLLM = async (text) => {
   if (!text) return null;
 
-  const chatEndpoint = (((import.meta?.env?.VITE_CHAT_ENDPOINT) || '/api/infra/chat')).replace(/\/$/, '');
+  const isLocalDev = typeof window !== 'undefined' && (
+    window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  );
+  const chatEndpoint = (((import.meta?.env?.VITE_CHAT_ENDPOINT) || (isLocalDev ? '/api/infra/chat' : '/infra/chat'))).replace(/\/$/, '');
 
   try {
     const payload = {
