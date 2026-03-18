@@ -60,10 +60,7 @@ const ChatTool: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const isLocalDev = typeof window !== 'undefined' && (
-    window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  );
-  const CHAT_ENDPOINT = (((import.meta as any).env?.VITE_CHAT_ENDPOINT as string) || (isLocalDev ? '/api/infra/chat' : '/infra/chat')).replace(/\/$/, '');
+  const CHAT_ENDPOINT = (((import.meta as any).env?.VITE_CHAT_ENDPOINT as string) || '/api/chat').replace(/\/$/, '');
 
   useEffect(() => {
     if (scrollRef.current) {
