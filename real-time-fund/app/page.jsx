@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, useMemo, useLayoutEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import Image from 'next/image';
 import { createWorker } from 'tesseract.js';
 import { createAvatar } from '@dicebear/core';
@@ -87,6 +89,36 @@ dayjs.tz.setDefault(TZ);
 const nowInTz = () => dayjs().tz(TZ);
 const toTz = (input) => (input ? dayjs.tz(input, TZ) : nowInTz());
 const formatDate = (input) => toTz(input).format('YYYY-MM-DD');
+const AI_STRATEGY_CACHE_KEY = 'aiStrategyCacheV1';
+
+const strategyMarkdownComponents = {
+  h1: ({ children }) => <h1 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 10px 0' }}>{children}</h1>,
+  h2: ({ children }) => <h2 style={{ fontSize: 20, fontWeight: 700, margin: '18px 0 8px 0', color: 'var(--primary)' }}>{children}</h2>,
+  h3: ({ children }) => <h3 style={{ fontSize: 16, fontWeight: 700, margin: '14px 0 6px 0' }}>{children}</h3>,
+  p: ({ children }) => <p style={{ margin: '6px 0', lineHeight: 1.8 }}>{children}</p>,
+  ul: ({ children }) => <ul style={{ margin: '8px 0 8px 18px', lineHeight: 1.8, listStyle: 'disc' }}>{children}</ul>,
+  ol: ({ children }) => <ol style={{ margin: '8px 0 8px 18px', lineHeight: 1.8, listStyle: 'decimal' }}>{children}</ol>,
+  li: ({ children }) => <li style={{ margin: '4px 0' }}>{children}</li>,
+  hr: () => <hr style={{ borderColor: 'var(--border)', opacity: 0.6, margin: '14px 0' }} />,
+  strong: ({ children }) => <strong style={{ fontWeight: 800, color: '#e8eefc' }}>{children}</strong>,
+  blockquote: ({ children }) => (
+    <blockquote style={{ borderLeft: '3px solid var(--primary)', paddingLeft: 10, margin: '10px 0', opacity: 0.95 }}>
+      {children}
+    </blockquote>
+  ),
+  table: ({ children }) => (
+    <div style={{ overflowX: 'auto', margin: '10px 0' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>{children}</table>
+    </div>
+  ),
+  th: ({ children }) => <th style={{ border: '1px solid var(--border)', padding: 8, background: 'rgba(255,255,255,0.04)' }}>{children}</th>,
+  td: ({ children }) => <td style={{ border: '1px solid var(--border)', padding: 8 }}>{children}</td>,
+  code: ({ children }) => (
+    <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: 6, fontSize: 12 }}>
+      {children}
+    </code>
+  ),
+};
 
 function ScanButton({ onClick, disabled }) {
   return (
@@ -987,6 +1019,11 @@ export default function HomePage() {
 
   // 成功提示弹窗
   const [successModal, setSuccessModal] = useState({ open: false, message: '' });
+  const [aiStrategyOpen, setAiStrategyOpen] = useState(false);
+  const [aiStrategyLoading, setAiStrategyLoading] = useState(false);
+  const [aiStrategyText, setAiStrategyText] = useState('');
+  const [aiStrategyUpdatedAt, setAiStrategyUpdatedAt] = useState('');
+  const [aiStrategyStale, setAiStrategyStale] = useState(false);
   // 轻提示 (Toast)
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' }); // type: 'info' | 'success' | 'error'
   const toastTimeoutRef = useRef(null);
@@ -997,6 +1034,144 @@ export default function HomePage() {
     toastTimeoutRef.current = setTimeout(() => {
       setToast((prev) => ({ ...prev, show: false }));
     }, 3000);
+  };
+
+  const buildStrategySnapshot = () => {
+    const now = dayjs();
+    const hhmm = now.hour() * 100 + now.minute();
+    const isTradingNow = isTradingDay && ((hhmm >= 930 && hhmm <= 1130) || (hhmm >= 1300 && hhmm <= 1500));
+    return {
+      now: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+      market: {
+        isTradingDay,
+        isTradingNow,
+        refreshMs,
+        currentTab,
+        sortBy,
+        sortOrder,
+        viewMode,
+      },
+      funds,
+      holdings,
+      favorites: Array.from(favorites || []),
+      groups,
+      transactions,
+      pendingTrades,
+      dcaPlans,
+    };
+  };
+
+  const getSnapshotFingerprint = (snapshot) => {
+    try {
+      const source = JSON.stringify({
+        funds: snapshot.funds,
+        holdings: snapshot.holdings,
+        favorites: snapshot.favorites,
+        groups: snapshot.groups,
+        transactions: snapshot.transactions,
+        pendingTrades: snapshot.pendingTrades,
+        dcaPlans: snapshot.dcaPlans,
+        market: snapshot.market,
+      });
+      let hash = 0;
+      for (let i = 0; i < source.length; i++) {
+        hash = ((hash << 5) - hash + source.charCodeAt(i)) | 0;
+      }
+      return String(hash);
+    } catch {
+      return '';
+    }
+  };
+
+  const readAiStrategyCache = () => {
+    try {
+      const raw = window.localStorage.getItem(AI_STRATEGY_CACHE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  };
+
+  const writeAiStrategyCache = (payload) => {
+    try {
+      window.localStorage.setItem(AI_STRATEGY_CACHE_KEY, JSON.stringify(payload));
+    } catch {}
+  };
+
+  const openAiStrategyModal = () => {
+    if (!funds || funds.length === 0) {
+      showToast('暂无基金数据可分析', 'info');
+      return;
+    }
+    const snapshot = buildStrategySnapshot();
+    const fingerprint = getSnapshotFingerprint(snapshot);
+    const cache = readAiStrategyCache();
+    setAiStrategyOpen(true);
+    if (cache?.content) {
+      setAiStrategyText(cache.content);
+      setAiStrategyUpdatedAt(cache.updatedAt || '');
+      setAiStrategyStale(cache.fingerprint !== fingerprint);
+    } else {
+      setAiStrategyText('');
+      setAiStrategyUpdatedAt('');
+      setAiStrategyStale(false);
+    }
+  };
+
+  const handleAiStrategyAnalyze = async (forceRegenerate = false) => {
+    if (!funds || funds.length === 0) {
+      showToast('暂无基金数据可分析', 'info');
+      return;
+    }
+    setAiStrategyOpen(true);
+    const snapshot = buildStrategySnapshot();
+    const fingerprint = getSnapshotFingerprint(snapshot);
+    const cached = readAiStrategyCache();
+    if (!forceRegenerate && cached?.content && cached?.fingerprint === fingerprint) {
+      setAiStrategyText(cached.content);
+      setAiStrategyUpdatedAt(cached.updatedAt || '');
+      setAiStrategyStale(false);
+      return;
+    }
+    setAiStrategyLoading(true);
+    if (forceRegenerate) setAiStrategyText('');
+    try {
+      const chatEndpoint = (((import.meta?.env?.VITE_CHAT_ENDPOINT) || '/api/chat')).replace(/\/$/, '');
+      const payload = {
+        messages: [
+          {
+            role: 'system',
+            content: '你是基金量化分析助手。请严格使用 Markdown 输出，强调可读性与可执行性。\n\n输出格式必须为：\n## 1. 策略摘要\n- 3~5 条要点，单条不超过30字。\n\n## 2. 分组建议\n- 按风格或板块分组，每组最多3条。\n- 每条格式：`基金代码 基金名 | 建议动作(加仓/减仓/观望) | 理由(一句话)`\n\n## 3. 风险与仓位控制\n- 3~5 条，聚焦回撤、集中度、行业偏离。\n\n## 4. 下次复盘清单\n- 3~6 条可量化指标（例如估值偏离、持仓涨跌、成交/波动）。\n\n约束：\n1) 不要写长段落，不要超过600字。\n2) 仅基于给定数据，不得臆测不存在的数据。\n3) 如果数据不足，明确写“数据不足”并给最小可执行建议。'
+          },
+          {
+            role: 'user',
+            content: `请基于以下“当前页面全量数据”生成策略建议：\n\n${JSON.stringify(snapshot, null, 2)}`
+          }
+        ],
+        stream: false,
+      };
+      const res = await fetch(chatEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        throw new Error(`AI分析失败: ${res.status}`);
+      }
+      const data = await res.json();
+      const content = data?.content || data?.message || '';
+      const finalText = content || '未返回有效分析结果';
+      const updatedAt = dayjs().format('YYYY-MM-DD HH:mm:ss');
+      setAiStrategyText(finalText);
+      setAiStrategyUpdatedAt(updatedAt);
+      setAiStrategyStale(false);
+      writeAiStrategyCache({ content: finalText, updatedAt, fingerprint });
+    } catch (e) {
+      setAiStrategyText(`AI分析失败：${e?.message || '未知错误'}`);
+    } finally {
+      setAiStrategyLoading(false);
+    }
   };
 
   // 定投计划自动生成买入队列的逻辑会在 storageHelper 定义之后实现
@@ -1348,13 +1523,17 @@ export default function HomePage() {
       }
 
       if (newFunds.length > 0) {
-        const replacedFunds = dedupeByCode(newFunds);
-        setFunds(replacedFunds);
-        storageHelper.setItem('funds', JSON.stringify(replacedFunds));
+        const mergedFunds = dedupeByCode([...newFunds, ...funds]);
+        setFunds(mergedFunds);
+        storageHelper.setItem('funds', JSON.stringify(mergedFunds));
 
-        // 图片识别导入采用全量替换，不保留历史持仓增量
-        setHoldings(newHoldings);
-        storageHelper.setItem('holdings', JSON.stringify(newHoldings));
+        // 仅更新本次导入到的基金持仓，不覆盖其它基金已有持仓
+        const mergedHoldings = {
+          ...holdings,
+          ...newHoldings,
+        };
+        setHoldings(mergedHoldings);
+        storageHelper.setItem('holdings', JSON.stringify(mergedHoldings));
 
         const nextSeries = {};
         newFunds.forEach(u => {
@@ -2319,9 +2498,9 @@ export default function HomePage() {
         }
       }
       if (added.length > 0) {
-        const replaced = Array.from(new Map(added.map(f => [f.code, f])).values());
-        setFunds(replaced);
-        storageHelper.setItem('funds', JSON.stringify(replaced));
+        const merged = dedupeByCode([...added, ...funds]);
+        setFunds(merged);
+        storageHelper.setItem('funds', JSON.stringify(merged));
         const nextSeries = {};
         added.forEach(u => {
           if (u?.code != null && !u.noValuation && Number.isFinite(Number(u.gsz))) {
@@ -2618,6 +2797,7 @@ export default function HomePage() {
   };
 
   const importFileRef = useRef(null);
+  const importGroupFileRef = useRef(null);
   const [importMsg, setImportMsg] = useState('');
 
   const normalizeCode = (value) => String(value || '').trim();
@@ -3181,6 +3361,177 @@ export default function HomePage() {
       setTimeout(finish, 3000);
     } catch (err) {
       console.error('Export error:', err);
+    }
+  };
+
+  const buildUniqueGroupName = (baseName, existingGroups) => {
+    const fallbackName = String(baseName || '').trim() || '导入分组';
+    const existingNames = new Set((existingGroups || []).map((group) => String(group?.name || '').trim()).filter(Boolean));
+    if (!existingNames.has(fallbackName)) return fallbackName;
+    let index = 2;
+    while (existingNames.has(`${fallbackName}(${index})`)) {
+      index += 1;
+    }
+    return `${fallbackName}(${index})`;
+  };
+
+  const exportCurrentGroupData = async () => {
+    if (currentTab === 'all' || currentTab === 'fav') {
+      showToast('请选择一个自定义分组后再导出', 'info');
+      return;
+    }
+    const currentGroup = groups.find((group) => group.id === currentTab);
+    if (!currentGroup) {
+      showToast('当前分组不存在', 'error');
+      return;
+    }
+
+    try {
+      const groupCodes = Array.from(new Set((currentGroup.codes || []).map(normalizeCode).filter(Boolean)));
+      const codeSet = new Set(groupCodes);
+      const payload = {
+        type: 'fund-group',
+        version: 1,
+        exportedAt: nowInTz().toISOString(),
+        group: {
+          name: currentGroup.name,
+          codes: groupCodes,
+        },
+        funds: funds.filter((fund) => codeSet.has(fund.code)),
+        holdings: Object.fromEntries(
+          Object.entries(holdings || {}).filter(([code]) => codeSet.has(code))
+        ),
+        transactions: Object.fromEntries(
+          Object.entries(transactions || {}).filter(([code]) => codeSet.has(code))
+        ),
+        pendingTrades: (pendingTrades || []).filter((trade) => codeSet.has(trade?.fundCode)),
+        dcaPlans: Object.fromEntries(
+          Object.entries(dcaPlans || {}).filter(([code]) => codeSet.has(code))
+        ),
+      };
+
+      const safeName = String(currentGroup.name || 'group').replace(/[\\/:*?"<>|]+/g, '_');
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const fileName = `fund-group-${safeName}-${Date.now()}.json`;
+
+      if (window.showSaveFilePicker) {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: fileName,
+          types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 3000);
+      }
+
+      setSuccessModal({ open: true, message: `已导出分组「${currentGroup.name}」` });
+    } catch (err) {
+      console.error('Export group error:', err);
+      showToast('分组导出失败', 'error');
+    }
+  };
+
+  const handleImportGroupFileChange = async (e) => {
+    try {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const text = await file.text();
+      const data = JSON.parse(text);
+
+      if (!isPlainObject(data) || data.type !== 'fund-group') {
+        showToast('不是有效的分组文件', 'error');
+        return;
+      }
+
+      const incomingFunds = Array.isArray(data.funds) ? dedupeByCode(data.funds).filter((fund) => fund && fund.code) : [];
+      const importedCodes = Array.from(
+        new Set([
+          ...(Array.isArray(data.group?.codes) ? data.group.codes.map(normalizeCode) : []),
+          ...incomingFunds.map((fund) => normalizeCode(fund.code)),
+        ].filter(Boolean))
+      );
+
+      if (importedCodes.length === 0) {
+        showToast('分组文件没有可导入的基金', 'info');
+        return;
+      }
+
+      const currentFunds = JSON.parse(localStorage.getItem('funds') || '[]');
+      const currentGroups = JSON.parse(localStorage.getItem('groups') || '[]');
+      const currentHoldings = JSON.parse(localStorage.getItem('holdings') || '{}');
+      const currentTransactions = JSON.parse(localStorage.getItem('transactions') || '{}');
+      const currentPendingTrades = JSON.parse(localStorage.getItem('pendingTrades') || '[]');
+      const currentDcaPlans = JSON.parse(localStorage.getItem('dcaPlans') || '{}');
+
+      const mergedFunds = dedupeByCode([...incomingFunds, ...currentFunds]);
+      setFunds(mergedFunds);
+      storageHelper.setItem('funds', JSON.stringify(mergedFunds));
+
+      const importedHoldings = isPlainObject(data.holdings) ? data.holdings : {};
+      const mergedHoldings = { ...currentHoldings, ...importedHoldings };
+      setHoldings(mergedHoldings);
+      storageHelper.setItem('holdings', JSON.stringify(mergedHoldings));
+
+      const mergedTransactions = { ...currentTransactions };
+      if (isPlainObject(data.transactions)) {
+        Object.entries(data.transactions).forEach(([code, txs]) => {
+          if (!Array.isArray(txs)) return;
+          const existing = Array.isArray(mergedTransactions[code]) ? mergedTransactions[code] : [];
+          const existingIds = new Set(existing.map((item) => item.id));
+          const newTxs = txs.filter((item) => item && !existingIds.has(item.id));
+          mergedTransactions[code] = [...existing, ...newTxs].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        });
+      }
+      setTransactions(mergedTransactions);
+      storageHelper.setItem('transactions', JSON.stringify(mergedTransactions));
+
+      const mergedPendingMap = new Map();
+      const keyOf = (trade) => {
+        if (trade?.id) return `id:${trade.id}`;
+        return `k:${trade?.fundCode || ''}:${trade?.type || ''}:${trade?.date || ''}:${trade?.share || ''}:${trade?.amount || ''}:${trade?.isAfter3pm ? 1 : 0}`;
+      };
+      (Array.isArray(currentPendingTrades) ? currentPendingTrades : []).forEach((trade) => {
+        if (!trade?.fundCode) return;
+        mergedPendingMap.set(keyOf(trade), trade);
+      });
+      (Array.isArray(data.pendingTrades) ? data.pendingTrades : []).forEach((trade) => {
+        if (!trade?.fundCode) return;
+        mergedPendingMap.set(keyOf(trade), trade);
+      });
+      const mergedPendingTrades = Array.from(mergedPendingMap.values());
+      setPendingTrades(mergedPendingTrades);
+      storageHelper.setItem('pendingTrades', JSON.stringify(mergedPendingTrades));
+
+      const importedDcaPlans = isPlainObject(data.dcaPlans) ? data.dcaPlans : {};
+      const mergedDcaPlans = { ...currentDcaPlans, ...importedDcaPlans };
+      setDcaPlans(mergedDcaPlans);
+      storageHelper.setItem('dcaPlans', JSON.stringify(mergedDcaPlans));
+
+      const groupName = buildUniqueGroupName(data.group?.name, currentGroups);
+      const newGroup = {
+        id: `group_${Date.now()}`,
+        name: groupName,
+        codes: importedCodes,
+      };
+      const mergedGroups = [...currentGroups, newGroup];
+      setGroups(mergedGroups);
+      storageHelper.setItem('groups', JSON.stringify(mergedGroups));
+      setCurrentTab(newGroup.id);
+
+      setSuccessModal({ open: true, message: `已导入分组「${groupName}」` });
+    } catch (err) {
+      console.error('Import group error:', err);
+      showToast('分组导入失败，请检查文件格式', 'error');
+    } finally {
+      if (importGroupFileRef.current) importGroupFileRef.current.value = '';
     }
   };
 
@@ -3818,7 +4169,22 @@ export default function HomePage() {
               </button>
             </div>
 
-            <div className="sort-group" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div className="sort-group">
+              <button
+                className="button secondary ai-strategy-btn"
+                type="button"
+                onClick={() => {
+                  openAiStrategyModal();
+                  const cache = readAiStrategyCache();
+                  if (!cache?.content) {
+                    handleAiStrategyAnalyze(true);
+                  }
+                }}
+                disabled={aiStrategyLoading || funds.length === 0}
+                title="基于当前实时全量数据生成策略"
+              >
+                {aiStrategyLoading ? '分析中…' : 'AI分析策略'}
+              </button>
               <div className="view-toggle" style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', padding: '2px' }}>
                 <button
                   className={`icon-button ${viewMode === 'card' ? 'active' : ''}`}
@@ -3888,6 +4254,19 @@ export default function HomePage() {
             </div>
           </div>
 
+          {currentTab !== 'all' && currentTab !== 'fav' && (
+            <>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                <button className="button secondary" type="button" onClick={exportCurrentGroupData}>
+                  导出分组
+                </button>
+                <button className="button secondary" type="button" onClick={() => importGroupFileRef.current?.click?.()}>
+                  导入分组
+                </button>
+              </div>
+            </>
+          )}
+
           {displayFunds.length === 0 ? (
             <EmptyStateCard
               fundsLength={funds.length}
@@ -3907,42 +4286,44 @@ export default function HomePage() {
                 />
 
               {currentTab !== 'all' && currentTab !== 'fav' && (
-                <motion.button
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="button-dashed"
-                  onClick={() => setAddFundToGroupOpen(true)}
-                  style={{
-                    width: '100%',
-                    height: '48px',
-                    border: '2px dashed var(--border)',
-                    background: 'transparent',
-                    borderRadius: '12px',
-                    color: 'var(--muted)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    marginBottom: '16px',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    fontSize: '14px',
-                    fontWeight: 500
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--primary)';
-                    e.currentTarget.style.color = 'var(--primary)';
-                    e.currentTarget.style.background = 'rgba(34, 211, 238, 0.05)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--border)';
-                    e.currentTarget.style.color = 'var(--muted)';
-                    e.currentTarget.style.background = 'transparent';
-                  }}
-                >
-                  <PlusIcon width="18" height="18" />
-                  <span>添加基金到此分组</span>
-                </motion.button>
+                <>
+                  <motion.button
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="button-dashed"
+                    onClick={() => setAddFundToGroupOpen(true)}
+                    style={{
+                      width: '100%',
+                      height: '48px',
+                      border: '2px dashed var(--border)',
+                      background: 'transparent',
+                      borderRadius: '12px',
+                      color: 'var(--muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      marginBottom: '16px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      fontSize: '14px',
+                      fontWeight: 500
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--primary)';
+                      e.currentTarget.style.color = 'var(--primary)';
+                      e.currentTarget.style.background = 'rgba(34, 211, 238, 0.05)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--border)';
+                      e.currentTarget.style.color = 'var(--muted)';
+                      e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    <PlusIcon width="18" height="18" />
+                    <span>添加基金到此分组</span>
+                  </motion.button>
+                </>
               )}
 
               <AnimatePresence mode="wait">
@@ -4386,6 +4767,74 @@ export default function HomePage() {
       </AnimatePresence>
 
       <AnimatePresence>
+        {aiStrategyOpen && (
+          <motion.div
+            className="modal-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-label="AI策略分析"
+            onClick={() => setAiStrategyOpen(false)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="glass card modal"
+              onClick={(e) => e.stopPropagation()}
+              style={{ width: 760, maxWidth: '92vw', maxHeight: '82vh', overflow: 'hidden' }}
+            >
+              <div className="title" style={{ marginBottom: 12, justifyContent: 'space-between' }}>
+                <span>AI策略分析</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button className="button secondary" onClick={() => handleAiStrategyAnalyze(true)} disabled={aiStrategyLoading}>
+                    重新生成
+                  </button>
+                  <button className="icon-button" onClick={() => setAiStrategyOpen(false)} style={{ border: 'none', background: 'transparent' }}>
+                    <CloseIcon width="20" height="20" />
+                  </button>
+                </div>
+              </div>
+              {!!aiStrategyUpdatedAt && (
+                <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+                  生成时间：{aiStrategyUpdatedAt}{aiStrategyStale ? '（当前数据已变化，建议重新生成）' : ''}
+                </div>
+              )}
+              <div
+                className="custom-scrollbar"
+                style={{
+                  maxHeight: '62vh',
+                  overflowY: 'auto',
+                  lineHeight: 1.8,
+                  fontSize: 15,
+                  color: 'var(--text)',
+                  background: 'rgba(5, 12, 30, 0.55)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 12,
+                  padding: 16,
+                }}
+              >
+                {aiStrategyLoading ? (
+                  '正在基于当前全量实时数据生成策略，请稍候…'
+                ) : aiStrategyText ? (
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={strategyMarkdownComponents}>
+                    {aiStrategyText}
+                  </ReactMarkdown>
+                ) : (
+                  '暂无分析结果'
+                )}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+                <button className="button secondary" onClick={() => setAiStrategyOpen(false)}>关闭</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {cloudConfigModal.open && (
           <CloudConfigModal
             type={cloudConfigModal.type}
@@ -4433,6 +4882,14 @@ export default function HomePage() {
         multiple
         style={{ display: 'none' }}
         onChange={handleFilesUpload}
+      />
+
+      <input
+        type="file"
+        ref={importGroupFileRef}
+        accept="application/json"
+        style={{ display: 'none' }}
+        onChange={handleImportGroupFileChange}
       />
 
       {settingsOpen && (

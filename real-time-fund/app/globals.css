@@ -1852,6 +1852,22 @@ input[type="number"] {
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+.sort-group {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex: 0 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.ai-strategy-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .group-summary-sticky {
   position: sticky;
   z-index: 35;
@@ -1875,6 +1891,17 @@ input[type="number"] {
     display: flex;
     flex-direction: column;
     align-items: center !important;
+  }
+
+  .sort-group {
+    width: 100%;
+    justify-content: flex-start;
+    margin-left: 0;
+    gap: 10px;
+  }
+
+  .ai-strategy-btn {
+    order: -1;
   }
 
   .tabs {
