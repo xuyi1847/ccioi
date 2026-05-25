@@ -747,3 +747,25 @@ export const parseFundTextWithLLM = async (text) => {
     return null;
   }
 };
+
+export const parseHoldingsFile = async (file) => {
+  if (!file) throw new Error('缺少文件');
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const base = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://127.0.0.1:8000'
+    : 'https://www.ccioi.com/api';
+
+  const response = await fetch(`${base}/holdings/parse-file`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.detail || '持仓文件解析失败');
+  }
+  return data;
+};

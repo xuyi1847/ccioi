@@ -3,6 +3,7 @@ import json
 import time
 import uuid
 from typing import Dict, Optional, Tuple, Any
+from io import BytesIO
 
 import json
 import time
@@ -10,11 +11,13 @@ import random
 import csv
 import asyncio
 import traceback
+import math
 from playwright.sync_api import sync_playwright
 from concurrent.futures import ThreadPoolExecutor
 import os
 import jwt
 import oss2
+import pandas as pd
 
 from fastapi import (
     FastAPI,
@@ -97,15 +100,28 @@ OSS_ACCESS_KEY_SECRET = os.getenv("OSS_ACCESS_KEY_SECRET")
 OSS_BUCKET = os.getenv("OSS_BUCKET", "yisvideo")
 OSS_ENDPOINT = os.getenv("OSS_ENDPOINT", "oss-cn-shanghai.aliyuncs.com")
 
+bucket = None
 if not OSS_ACCESS_KEY_ID or not OSS_ACCESS_KEY_SECRET:
     # 启动时就给出明确错误，避免运行时才发现
     print("⚠️ OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET is missing in environment variables.")
-
-auth = oss2.Auth(OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET)
-bucket = oss2.Bucket(auth, f"https://{OSS_ENDPOINT}", OSS_BUCKET)
+else:
+    try:
+        auth = oss2.Auth(OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET)
+        bucket = oss2.Bucket(auth, f"https://{OSS_ENDPOINT}", OSS_BUCKET)
+    except Exception as e:
+        print(f"⚠️ Failed to initialize OSS client: {e}")
+        bucket = None
 
 def _oss_public_url(object_key: str) -> str:
     return f"https://{OSS_BUCKET}.{OSS_ENDPOINT}/{object_key}"
+
+def _require_oss_bucket():
+    if bucket is None:
+        raise HTTPException(
+            status_code=503,
+            detail="OSS is not configured. Please set OSS_ACCESS_KEY_ID and OSS_ACCESS_KEY_SECRET.",
+        )
+    return bucket
 
 # =========================================================
 # INVITE CODES + IN-MEM USERS
@@ -210,9 +226,12 @@ async def login(req: LoginReq):
 
 @router.post("/chat")
 async def ccioi_chat(req: DeepSeekChatReq):
-    api_key = os.getenv("CCIOI_API_KEY")
+    api_key = os.getenv("CCIOI_API_KEY") or os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=500, detail="CCIOI_API_KEY is missing")
+        raise HTTPException(
+            status_code=503,
+            detail="Missing API key: set CCIOI_API_KEY (or OPENAI_API_KEY for local development).",
+        )
 
     base_url = os.getenv("CCIOI_BASE_URL", "https://api.deepseek.com")
     client = OpenAI(api_key=api_key, base_url=base_url)
@@ -239,6 +258,8 @@ async def ccioi_chat(req: DeepSeekChatReq):
                     if content:
                         yield f"data: {content}\n\n"
             except Exception as exc:
+                print(f"🔥 /chat stream failed: {exc}")
+                print(traceback.format_exc())
                 yield f"data: [ERROR] {exc}\n\n"
 
         return StreamingResponse(
@@ -250,12 +271,17 @@ async def ccioi_chat(req: DeepSeekChatReq):
             },
         )
 
-    response = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        stream=False,
-    )
-    return {"content": response.choices[0].message.content}
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            stream=False,
+        )
+        return {"content": response.choices[0].message.content}
+    except Exception as exc:
+        print(f"🔥 /chat failed: {exc}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=502, detail=f"Upstream chat provider error: {exc}")
 
 
 @router.post("/infra/chat")
@@ -272,11 +298,12 @@ async def upload_to_oss(file: UploadFile = File(...)):
     返回可公网访问的 URL
     """
     try:
+        active_bucket = _require_oss_bucket()
         ext = os.path.splitext(file.filename or "")[1] or ""
         object_key = f"uploads/{uuid.uuid4().hex}{ext}"
 
         content = await file.read()
-        bucket.put_object(object_key, content)
+        active_bucket.put_object(object_key, content)
 
         return {
             "status": "success",
@@ -285,6 +312,157 @@ async def upload_to_oss(file: UploadFile = File(...)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _normalize_excel_header(value: Any) -> str:
+    return (
+        str(value or "")
+        .strip()
+        .lower()
+        .replace(" ", "")
+        .replace("\r", "")
+        .replace("\n", "")
+        .replace("\t", "")
+        .replace("（", "")
+        .replace("）", "")
+        .replace("(", "")
+        .replace(")", "")
+        .replace("-", "")
+        .replace("_", "")
+        .replace("/", "")
+    )
+
+
+def _parse_excel_money(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, float) and math.isnan(value):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    raw = str(value).strip()
+    if not raw:
+        return None
+    negative_by_paren = raw.startswith("(") and raw.endswith(")")
+    cleaned = (
+        raw.replace("￥", "")
+        .replace("¥", "")
+        .replace(",", "")
+        .replace(" ", "")
+        .replace("(", "")
+        .replace(")", "")
+    )
+    try:
+        num = float(cleaned)
+    except Exception:
+        return None
+    return -num if negative_by_paren else num
+
+
+def _get_row_value_by_aliases(row: dict, aliases: list[str]) -> Any:
+    alias_set = {_normalize_excel_header(alias) for alias in aliases}
+    for key, value in row.items():
+        normalized_key = _normalize_excel_header(key)
+        if normalized_key in alias_set:
+            return value
+        if any(alias and (alias in normalized_key or normalized_key in alias) for alias in alias_set):
+            return value
+    return ""
+
+
+def _build_excel_preview_text(df: pd.DataFrame, max_rows: int = 80) -> str:
+    safe_df = df.where(pd.notna(df), "")
+    columns = [str(col or "").strip() for col in safe_df.columns.tolist()]
+    lines = []
+    if any(columns):
+        lines.append("\t".join(columns))
+    for row in safe_df.head(max_rows).itertuples(index=False, name=None):
+        values = [str(v or "").strip() for v in row]
+        if any(values):
+            lines.append("\t".join(values))
+    return "\n".join(lines)
+
+
+def _decode_text_bytes(content: bytes) -> str:
+    encodings = ["utf-8", "utf-8-sig", "gb18030", "gbk", "latin1"]
+    for enc in encodings:
+        try:
+            return content.decode(enc)
+        except Exception:
+            continue
+    return ""
+
+
+@router.post("/holdings/parse-file")
+@router.post("/excel/holdings/parse")
+async def parse_holdings_file(file: UploadFile = File(...)):
+    filename = file.filename or ""
+    ext = os.path.splitext(filename)[1].lower()
+    try:
+        content = await file.read()
+        preview_text = ""
+        rows = []
+        first_sheet_name = filename or "持仓文件"
+
+        if ext in {".xlsx", ".xls"}:
+            workbook = pd.read_excel(BytesIO(content), sheet_name=None, dtype=object)
+            if not workbook:
+                raise HTTPException(status_code=400, detail="文件没有可读取的工作表")
+            first_sheet_name = next(iter(workbook.keys()))
+            df = workbook[first_sheet_name]
+            if df is None or df.empty:
+                raise HTTPException(status_code=400, detail="文件没有可导入的数据")
+            df = df.where(pd.notna(df), "")
+            rows = df.to_dict(orient="records")
+            preview_text = _build_excel_preview_text(df)
+        elif ext == ".csv":
+            df = pd.read_csv(BytesIO(content), dtype=object).fillna("")
+            rows = df.to_dict(orient="records")
+            preview_text = _build_excel_preview_text(df)
+        elif ext == ".json":
+            obj = json.loads(_decode_text_bytes(content) or "{}")
+            if isinstance(obj, list):
+                rows = obj
+                df = pd.DataFrame(obj).fillna("")
+                preview_text = _build_excel_preview_text(df)
+            elif isinstance(obj, dict):
+                rows = obj.get("rows") if isinstance(obj.get("rows"), list) else [obj]
+                df = pd.DataFrame(rows).fillna("")
+                preview_text = _build_excel_preview_text(df)
+        else:
+            preview_text = _decode_text_bytes(content)
+            if preview_text:
+                lines = [line.strip() for line in preview_text.splitlines() if line.strip()]
+                rows = [{"raw": line} for line in lines[:200]]
+
+        parsed_rows = []
+        for row in rows:
+            fund_code = _get_row_value_by_aliases(row, ["基金代码", "代码", "基金编号", "基金代号", "产品代码"])
+            fund_name = _get_row_value_by_aliases(row, ["基金名称", "名称", "基金简称", "产品名称"])
+            hold_amount = _get_row_value_by_aliases(row, ["持有金额", "持仓金额", "持仓市值", "持有市值", "参考市值", "市值", "金额", "金额元"])
+            hold_gains = _get_row_value_by_aliases(row, ["持有收益", "持仓收益", "累计收益", "浮动盈亏", "持有盈亏", "收益", "持仓收益元"])
+
+            item = {
+                "fundCode": str(fund_code or "").strip(),
+                "fundName": str(fund_name or "").strip(),
+                "holdAmount": _parse_excel_money(hold_amount),
+                "holdGains": _parse_excel_money(hold_gains),
+            }
+            if (item["fundCode"] or item["fundName"]) and item["holdAmount"] is not None and item["holdAmount"] > 0:
+                parsed_rows.append(item)
+
+        return {
+            "sheetName": first_sheet_name,
+            "rows": parsed_rows,
+            "previewText": preview_text,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print("excel holdings parse failed:", exc)
+        print(traceback.format_exc())
+        raise HTTPException(status_code=400, detail="持仓文件解析失败，请检查文件内容")
 
 # =========================================================
 # HISTORY APIs (JWT -> user_id -> list OSS meta)
@@ -303,8 +481,9 @@ async def get_history(user: dict = Depends(get_user_from_auth)):
     records = []
 
     try:
-        for obj in oss2.ObjectIterator(bucket, prefix=prefix):
-            raw = bucket.get_object(obj.key).read()
+        active_bucket = _require_oss_bucket()
+        for obj in oss2.ObjectIterator(active_bucket, prefix=prefix):
+            raw = active_bucket.get_object(obj.key).read()
             try:
                 content = raw.decode("utf-8")
                 records.append(json.loads(content))
@@ -332,8 +511,9 @@ async def delete_history_item(task_id: str, user: dict = Depends(get_user_from_a
     meta_key = f"users/{user_id}/meta/{task_id}.json"
 
     try:
-        if bucket.object_exists(meta_key):
-            bucket.delete_object(meta_key)
+        active_bucket = _require_oss_bucket()
+        if active_bucket.object_exists(meta_key):
+            active_bucket.delete_object(meta_key)
         return {"status": "deleted", "task_id": task_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -679,15 +859,16 @@ async def gpu_upload(
         raise HTTPException(status_code=400, detail="task_id and user_id required")
 
     try:
+        active_bucket = _require_oss_bucket()
         # ===== 1. 存视频 =====
         video_key = f"videos/{task_id}.mp4"
         content = await file.read()
-        bucket.put_object(video_key, content)
+        active_bucket.put_object(video_key, content)
         public_url = _oss_public_url(video_key)
 
         # ===== 2. 写 meta =====
         meta_key = f"users/{user_id}/meta/{task_id}.json"
-        bucket.put_object(
+        active_bucket.put_object(
             meta_key,
             json.dumps(
                 {

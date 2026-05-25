@@ -9,6 +9,15 @@ export default function GroupManageModal({ groups, onClose, onSave }) {
   const [items, setItems] = useState(groups);
   const [deleteConfirm, setDeleteConfirm] = useState(null); // { id, name }
 
+  const handleOverlayClick = (e) => {
+    // 仅允许点击当前弹窗的背景遮罩关闭；
+    // 来自 portal（如 ConfirmModal）的点击会冒泡到这里，需要忽略。
+    if (e.target !== e.currentTarget) return;
+    // 删除确认弹窗打开时，不允许关闭外层管理弹窗，避免连续删除被打断。
+    if (deleteConfirm) return;
+    onClose();
+  };
+
   const handleReorder = (newOrder) => {
     setItems(newOrder);
   };
@@ -24,7 +33,11 @@ export default function GroupManageModal({ groups, onClose, onSave }) {
     const isEmpty = itemToDelete && (!itemToDelete.codes || itemToDelete.codes.length === 0);
 
     if (isNew || isEmpty) {
-      setItems(prev => prev.filter(item => item.id !== id));
+      setItems(prev => {
+        const next = prev.filter(item => item.id !== id);
+        onSave(next);
+        return next;
+      });
     } else {
       setDeleteConfirm({ id, name });
     }
@@ -32,7 +45,11 @@ export default function GroupManageModal({ groups, onClose, onSave }) {
 
   const handleConfirmDelete = () => {
     if (deleteConfirm) {
-      setItems(prev => prev.filter(item => item.id !== deleteConfirm.id));
+      setItems(prev => {
+        const next = prev.filter(item => item.id !== deleteConfirm.id);
+        onSave(next);
+        return next;
+      });
       setDeleteConfirm(null);
     }
   };
@@ -61,7 +78,7 @@ export default function GroupManageModal({ groups, onClose, onSave }) {
       role="dialog"
       aria-modal="true"
       aria-label="管理分组"
-      onClick={onClose}
+      onClick={handleOverlayClick}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -117,6 +134,7 @@ export default function GroupManageModal({ groups, onClose, onSave }) {
                       className={`input group-rename-input ${!item.name.trim() ? 'error' : ''}`}
                       value={item.name}
                       onChange={(e) => handleRename(item.id, e.target.value)}
+                      onPointerDown={(e) => e.stopPropagation()}
                       placeholder="请输入分组名称..."
                       style={{
                         flex: 1,
@@ -127,6 +145,8 @@ export default function GroupManageModal({ groups, onClose, onSave }) {
                     />
                     <button
                       className="icon-button danger"
+                      type="button"
+                      onPointerDown={(e) => e.stopPropagation()}
                       onClick={() => handleDeleteClick(item.id, item.name)}
                       title="删除分组"
                       style={{ width: '36px', height: '36px', flexShrink: 0 }}

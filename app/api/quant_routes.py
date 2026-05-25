@@ -1,6 +1,7 @@
 import json
 import os
 import time
+import traceback
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -105,9 +106,12 @@ def evaluate_assets(req: EvaluateRequest):
 
 @router.post("/chat")
 async def quant_chat(req: QuantChatReq):
-    api_key = os.getenv("CCIOI_API_KEY")
+    api_key = os.getenv("CCIOI_API_KEY") or os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=500, detail="CCIOI_API_KEY is missing")
+        raise HTTPException(
+            status_code=503,
+            detail="Missing API key: set CCIOI_API_KEY (or OPENAI_API_KEY for local development).",
+        )
 
     base_url = os.getenv("CCIOI_BASE_URL", "https://api.deepseek.com")
     client = OpenAI(api_key=api_key, base_url=base_url)
@@ -127,79 +131,86 @@ async def quant_chat(req: QuantChatReq):
         'or {"tool":"none"}.\n'
     )
 
-    decision = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": "You are a finance data router."},
-            {"role": "system", "content": system_guardrail},
-            {"role": "system", "content": tool_list},
-            *req.messages,
-        ],
-        stream=False,
-    )
-    decision_text = decision.choices[0].message.content or ""
-    tool_call = {"tool": "none", "args": {}}
     try:
-        tool_call = json.loads(decision_text)
-    except Exception:
+        decision = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You are a finance data router."},
+                {"role": "system", "content": system_guardrail},
+                {"role": "system", "content": tool_list},
+                *req.messages,
+            ],
+            stream=False,
+        )
+        decision_text = decision.choices[0].message.content or ""
         tool_call = {"tool": "none", "args": {}}
+        try:
+            tool_call = json.loads(decision_text)
+        except Exception:
+            tool_call = {"tool": "none", "args": {}}
 
-    tool_result = None
-    if tool_call.get("tool") == "fund_daily_summary":
-        args = tool_call.get("args", {})
-        tool_result = get_fund_daily_summary(
-            code=str(args.get("code", "")).strip(),
-            lookback_days=int(args.get("lookback_days", 20)),
+        tool_result = None
+        if tool_call.get("tool") == "fund_daily_summary":
+            args = tool_call.get("args", {})
+            tool_result = get_fund_daily_summary(
+                code=str(args.get("code", "")).strip(),
+                lookback_days=int(args.get("lookback_days", 20)),
+            )
+        elif tool_call.get("tool") == "fund_daily_history":
+            args = tool_call.get("args", {})
+            tool_result = get_fund_daily_history(
+                code=str(args.get("code", "")).strip(),
+                start=args.get("start"),
+                end=args.get("end"),
+                limit=int(args.get("limit", 120)),
+            )
+
+        final_messages = [{"role": "system", "content": system_guardrail}] + list(req.messages)
+        if tool_result is not None:
+            final_messages = [
+                {"role": "system", "content": system_guardrail},
+                {"role": "system", "content": "Use the tool result to answer the user."},
+                {"role": "system", "content": f"Tool result: {json.dumps(tool_result, ensure_ascii=False)}"},
+                *req.messages,
+            ]
+
+        if req.stream:
+            def stream_generator():
+                try:
+                    response = client.chat.completions.create(
+                        model=model,
+                        messages=final_messages,
+                        stream=True,
+                    )
+                    for chunk in response:
+                        delta = chunk.choices[0].delta
+                        content = getattr(delta, "content", None)
+                        if content:
+                            yield f"data: {content}\n\n"
+                except Exception as exc:
+                    print(f"🔥 /quant/chat stream failed: {exc}")
+                    print(traceback.format_exc())
+                    yield f"data: [ERROR] {exc}\n\n"
+
+            return StreamingResponse(
+                stream_generator(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                },
+            )
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=final_messages,
+            stream=False,
         )
-    elif tool_call.get("tool") == "fund_daily_history":
-        args = tool_call.get("args", {})
-        tool_result = get_fund_daily_history(
-            code=str(args.get("code", "")).strip(),
-            start=args.get("start"),
-            end=args.get("end"),
-            limit=int(args.get("limit", 120)),
-        )
-
-    final_messages = [{"role": "system", "content": system_guardrail}] + list(req.messages)
-    if tool_result is not None:
-        final_messages = [
-            {"role": "system", "content": system_guardrail},
-            {"role": "system", "content": "Use the tool result to answer the user."},
-            {"role": "system", "content": f"Tool result: {json.dumps(tool_result, ensure_ascii=False)}"},
-            *req.messages,
-        ]
-
-    if req.stream:
-        def stream_generator():
-            try:
-                response = client.chat.completions.create(
-                    model=model,
-                    messages=final_messages,
-                    stream=True,
-                )
-                for chunk in response:
-                    delta = chunk.choices[0].delta
-                    content = getattr(delta, "content", None)
-                    if content:
-                        yield f"data: {content}\n\n"
-            except Exception as exc:
-                yield f"data: [ERROR] {exc}\n\n"
-
-        return StreamingResponse(
-            stream_generator(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-            },
-        )
-
-    response = client.chat.completions.create(
-        model=model,
-        messages=final_messages,
-        stream=False,
-    )
-    return {"content": response.choices[0].message.content}
+        return {"content": response.choices[0].message.content}
+    except Exception as exc:
+        print(f"🔥 /quant/chat failed: {exc}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=502, detail=f"Upstream chat provider error: {exc}")
 
 
 @router.get("/fund_intraday_estimate")

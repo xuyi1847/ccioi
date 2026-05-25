@@ -65,7 +65,7 @@ import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { toast as sonnerToast } from 'sonner';
 import { recordValuation, getAllValuationSeries, clearFund } from './lib/valuationTimeseries';
 import { loadHolidaysForYears, isTradingDay as isDateTradingDay } from './lib/tradingCalendar';
-import { parseFundTextWithLLM, fetchFundData, fetchLatestRelease, fetchShanghaiIndexDate, fetchSmartFundNetValue, searchFunds } from './api/fund';
+import { parseFundTextWithLLM, fetchFundData, fetchLatestRelease, fetchShanghaiIndexDate, fetchSmartFundNetValue, searchFunds, parseHoldingsFile } from './api/fund';
 import packageJson from '../package.json';
 import PcFundTable from './components/PcFundTable';
 import MobileFundTable from './components/MobileFundTable';
@@ -2797,6 +2797,7 @@ export default function HomePage() {
   };
 
   const importFileRef = useRef(null);
+  const excelImportFileRef = useRef(null);
   const importGroupFileRef = useRef(null);
   const [importMsg, setImportMsg] = useState('');
 
@@ -2805,6 +2806,162 @@ export default function HomePage() {
     if (value === null || value === undefined || value === '') return null;
     const num = Number(value);
     return Number.isFinite(num) ? num : null;
+  };
+  const parseImportedMoney = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    const raw = String(value).trim();
+    if (!raw || raw === '--') return null;
+    const negativeByParen = /^\(.*\)$/.test(raw);
+    const cleaned = raw.replace(/[￥¥,\s]/g, '').replace(/[()]/g, '');
+    const num = parseFloat(cleaned);
+    if (!Number.isFinite(num)) return null;
+    return negativeByParen ? -num : num;
+  };
+  const normalizeLlmFundRows = (value) => {
+    let parsed = value;
+    if (typeof value === 'string') {
+      try {
+        parsed = JSON.parse(value);
+      } catch (error) {
+        console.error('LLM Excel parse JSON error:', error);
+        parsed = null;
+      }
+    }
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((item) => ({
+      fundCode: normalizeCode(item?.fundCode),
+      fundName: String(item?.fundName || '').trim(),
+      holdAmount: parseImportedMoney(item?.holdAmount ?? item?.holdAmounts),
+      holdGains: parseImportedMoney(item?.holdGains),
+    })).filter((item) => (item.fundCode || item.fundName) && item.holdAmount !== null && item.holdAmount > 0);
+  };
+
+  const resolveFundCodeFromExcelRow = async ({ fundCode, fundName }) => {
+    const normalizedCode = normalizeCode(fundCode);
+    if (/^\d{6}$/.test(normalizedCode)) return normalizedCode;
+    const normalizedName = String(fundName || '').trim();
+    if (!normalizedName) return '';
+    try {
+      const list = await searchFunds(normalizedName);
+      if (!Array.isArray(list) || list.length === 0) return '';
+      const exact = list.find((item) => String(item?.NAME || '').trim() === normalizedName);
+      return exact?.CODE || list[0]?.CODE || '';
+    } catch {
+      return '';
+    }
+  };
+
+  const handleExcelImportFileChange = async (e) => {
+    try {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const parsed = await parseHoldingsFile(file);
+
+      setLoading(true);
+
+      let candidates = (Array.isArray(parsed?.rows) ? parsed.rows : []).map((row) => ({
+        fundCode: normalizeCode(row?.fundCode),
+        fundName: String(row?.fundName || '').trim(),
+        holdAmount: parseImportedMoney(row?.holdAmount),
+        holdGains: parseImportedMoney(row?.holdGains),
+      })).filter((item) => (item.fundCode || item.fundName) && item.holdAmount !== null && item.holdAmount > 0);
+
+      if (candidates.length === 0 && parsed?.previewText) {
+        try {
+          const llmText = `以下是从持仓文件中提取的文本，请抽取基金持仓信息并仅返回 JSON 数组。字段为 fundCode、fundName、holdAmounts、holdGains。\n\n${parsed.previewText}`;
+          const llmResult = await parseFundTextWithLLM(llmText);
+          candidates = normalizeLlmFundRows(llmResult);
+        } catch (error) {
+          console.error('Excel LLM fallback failed:', error);
+        }
+      }
+
+      if (candidates.length === 0) {
+        showToast('没有识别到有效的基金持仓行，请检查文件内容', 'error');
+        return;
+      }
+
+      const importedFunds = [];
+      const importedHoldings = {};
+      const importedCodes = [];
+      let successCount = 0;
+
+      for (const item of candidates) {
+        const code = await resolveFundCodeFromExcelRow(item);
+        if (!/^\d{6}$/.test(code)) continue;
+        try {
+          const data = await fetchFundData(code);
+          if (!data?.code) continue;
+          importedFunds.push(data);
+          importedCodes.push(data.code);
+          const nav = Number(data?.dwjz || data?.gsz || 0);
+          if (nav > 0 && item.holdAmount !== null) {
+            const share = item.holdAmount / nav;
+            const profit = item.holdGains !== null ? item.holdGains : 0;
+            const principal = item.holdAmount - profit;
+            const cost = share > 0 ? principal / share : 0;
+            importedHoldings[data.code] = {
+              share: Number(share.toFixed(2)),
+              cost: Number(cost.toFixed(4)),
+            };
+          }
+          successCount += 1;
+        } catch (error) {
+          console.error(`持仓文件导入基金 ${code} 失败`, error);
+        }
+      }
+
+      if (successCount === 0) {
+        showToast('文件中的基金未能成功导入', 'error');
+        return;
+      }
+
+      const currentFunds = JSON.parse(localStorage.getItem('funds') || '[]');
+      const currentGroups = JSON.parse(localStorage.getItem('groups') || '[]');
+      const currentHoldings = JSON.parse(localStorage.getItem('holdings') || '{}');
+
+      const mergedFunds = dedupeByCode([...importedFunds, ...currentFunds]);
+      setFunds(mergedFunds);
+      storageHelper.setItem('funds', JSON.stringify(mergedFunds));
+
+      const mergedHoldings = { ...currentHoldings, ...importedHoldings };
+      setHoldings(mergedHoldings);
+      storageHelper.setItem('holdings', JSON.stringify(mergedHoldings));
+
+      const nextSeries = {};
+      importedFunds.forEach((fund) => {
+        if (fund?.code != null && !fund.noValuation && Number.isFinite(Number(fund.gsz))) {
+          nextSeries[fund.code] = recordValuation(fund.code, { gsz: fund.gsz, gztime: fund.gztime });
+        }
+      });
+      if (Object.keys(nextSeries).length > 0) {
+        setValuationSeries((prev) => ({ ...prev, ...nextSeries }));
+      }
+
+      const fileBaseName = String(file.name || 'Excel持仓')
+        .replace(/\.[^.]+$/, '')
+        .trim();
+      const groupName = buildUniqueGroupName(fileBaseName, currentGroups);
+      const newGroup = {
+        id: `group_${Date.now()}`,
+        name: groupName,
+        codes: Array.from(new Set(importedCodes)),
+      };
+      const mergedGroups = [...currentGroups, newGroup];
+      setGroups(mergedGroups);
+      storageHelper.setItem('groups', JSON.stringify(mergedGroups));
+      setCurrentTab(newGroup.id);
+
+      setSuccessModal({ open: true, message: `已导入持仓文件，共 ${successCount} 支基金` });
+    } catch (error) {
+      console.error('Holdings file import error:', error);
+      showToast('持仓文件导入失败，请检查文件内容', 'error');
+    } finally {
+      setLoading(false);
+      if (excelImportFileRef.current) excelImportFileRef.current.value = '';
+    }
   };
 
   function getComparablePayload(payload) {
@@ -4272,6 +4429,9 @@ export default function HomePage() {
               fundsLength={funds.length}
               currentTab={currentTab}
               onAddToGroup={() => setAddFundToGroupOpen(true)}
+              onExportGroup={exportCurrentGroupData}
+              onImportGroup={() => importGroupFileRef.current?.click?.()}
+              onImportExcelHoldings={() => excelImportFileRef.current?.click?.()}
             />
           ) : (
             <>
@@ -4892,6 +5052,14 @@ export default function HomePage() {
         onChange={handleImportGroupFileChange}
       />
 
+      <input
+        type="file"
+        ref={excelImportFileRef}
+        accept="*/*"
+        style={{ display: 'none' }}
+        onChange={handleExcelImportFileChange}
+      />
+
       {settingsOpen && (
         <SettingsModal
           onClose={() => setSettingsOpen(false)}
@@ -4901,6 +5069,8 @@ export default function HomePage() {
           exportLocalData={exportLocalData}
           importFileRef={importFileRef}
           handleImportFileChange={handleImportFileChange}
+          excelImportFileRef={excelImportFileRef}
+          handleExcelImportFileChange={handleExcelImportFileChange}
           importMsg={importMsg}
           isMobile={isMobile}
           containerWidth={containerWidth}

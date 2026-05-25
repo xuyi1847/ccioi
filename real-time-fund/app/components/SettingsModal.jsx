@@ -14,6 +14,8 @@ export default function SettingsModal({
   exportLocalData,
   importFileRef,
   handleImportFileChange,
+  excelImportFileRef,
+  handleExcelImportFileChange,
   importMsg,
   isMobile,
   containerWidth = 1200,
@@ -183,6 +185,22 @@ export default function SettingsModal({
                 {importMsg}
               </div>
             )}
+          </div>
+
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <div className="muted" style={{ marginBottom: 8, fontSize: '0.8rem' }}>持仓文件导入</div>
+            <div className="row" style={{ gap: 8 }}>
+              <button type="button" className="button" onClick={() => excelImportFileRef.current?.click?.()}>
+                导入持仓文件
+              </button>
+            </div>
+            <input
+              ref={excelImportFileRef}
+              type="file"
+              accept="*/*"
+              style={{ display: 'none' }}
+              onChange={handleExcelImportFileChange}
+            />
           </div>
 
           <div className="row" style={{ justifyContent: 'flex-end', marginTop: 24 }}>
