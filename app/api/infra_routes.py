@@ -35,6 +35,16 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from openai import OpenAI
+from app.database import (
+    add_balance,
+    create_user,
+    get_user_by_email,
+    get_user_by_id,
+    get_user_config,
+    public_user,
+    save_user_config,
+    verify_password,
+)
 
 # =========================================================
 # APP / ROUTER
@@ -53,7 +63,7 @@ JWT_EXPIRE_SECONDS = 60 * 60 * 24 * 7  # 7 天
 
 def create_jwt(user: dict) -> str:
     payload = {
-        "sub": user["id"],
+        "sub": str(user["id"]),
         "email": user["email"],
         "name": user.get("name", ""),
         "iat": int(time.time()),
@@ -124,42 +134,22 @@ def _require_oss_bucket():
     return bucket
 
 # =========================================================
-# INVITE CODES + IN-MEM USERS
-# =========================================================
-VALID_INVITE_CODES = {
-    "CCIOI-ALPHA",
-    "CCIOI-BETA",
-    "INTERNAL-2025",
-}
-
-users_by_email: Dict[str, dict] = {}
-users_by_id: Dict[str, dict] = {}
-
-# 预置 10 个用户（开发/内测）
-for i in range(1, 11):
-    user_id = str(uuid.uuid4())
-    email = f"user{i}@ccioi.com"
-    user = {
-        "id": user_id,
-        "email": email,
-        "name": f"Test User {i}",
-        "balance": 100.0,
-        "created_at": time.time(),
-        "invite_code": "SYSTEM_PRESET",
-    }
-    users_by_email[email] = user
-    users_by_id[user_id] = user
-
-# =========================================================
 # Pydantic Models
 # =========================================================
 class RegisterReq(BaseModel):
     email: EmailStr
     name: str
     invite_code: str
+    password: str
 
 class LoginReq(BaseModel):
     email: EmailStr
+    password: str
+
+
+class UserConfigReq(BaseModel):
+    data: dict[str, Any]
+    partial: bool = False
 
 
 class DeepSeekChatReq(BaseModel):
@@ -173,55 +163,63 @@ class DeepSeekChatReq(BaseModel):
 @router.post("/register")
 async def register(req: RegisterReq):
     email = req.email.lower().strip()
-
-    if req.invite_code not in VALID_INVITE_CODES:
-        raise HTTPException(status_code=403, detail="Invalid invite code")
-
-    if email in users_by_email:
+    name = req.name.strip()
+    invite_code = req.invite_code.strip()
+    if len(req.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    if get_user_by_email(email):
         raise HTTPException(status_code=400, detail="Email already registered")
-
-    user_id = str(uuid.uuid4())
-    user = {
-        "id": user_id,
-        "email": email,
-        "name": req.name.strip(),
-        "balance": 0.0,
-        "created_at": time.time(),
-        "invite_code": req.invite_code.strip(),
-    }
-    users_by_email[email] = user
-    users_by_id[user_id] = user
+    try:
+        user = create_user(str(uuid.uuid4()), email, name, req.password, invite_code)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Invalid invite code")
+    except Exception as exc:
+        if "users_email_key" in str(exc).lower():
+            raise HTTPException(status_code=400, detail="Email already registered")
+        raise
 
     token = create_jwt(user)
-
-    return {
-        "user": {
-            "id": user["id"],
-            "email": user["email"],
-            "name": user["name"],
-            "balance": user["balance"],
-        },
-        "token": token,
-    }
+    return {"user": public_user(user), "token": token}
 
 @router.post("/login")
 async def login(req: LoginReq):
     email = req.email.lower().strip()
-    user = users_by_email.get(email)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
+    user = get_user_by_email(email)
+    if not user or not verify_password(req.password, user["password_hash"], user["password_salt"]):
+        raise HTTPException(status_code=401, detail="Email or password is incorrect")
     token = create_jwt(user)
+    return {"user": public_user(user), "token": token}
 
-    return {
-        "user": {
-            "id": user["id"],
-            "email": user["email"],
-            "name": user["name"],
-            "balance": user["balance"],
-        },
-        "token": token,
-    }
+
+@router.get("/me")
+async def me(auth: dict = Depends(get_user_from_auth)):
+    user = get_user_by_id(auth["sub"])
+    if not user:
+        raise HTTPException(status_code=401, detail="User no longer exists")
+    return {"user": public_user(user)}
+
+
+@router.post("/recharge")
+async def recharge(amount: float, auth: dict = Depends(get_user_from_auth)):
+    if amount <= 0 or amount > 100000:
+        raise HTTPException(status_code=400, detail="Invalid recharge amount")
+    balance = add_balance(auth["sub"], amount)
+    if balance is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"new_balance": balance}
+
+
+@router.get("/user-config")
+async def read_user_config(auth: dict = Depends(get_user_from_auth)):
+    config = get_user_config(auth["sub"])
+    return config or {"data": {}, "updated_at": None}
+
+
+@router.put("/user-config")
+async def write_user_config(req: UserConfigReq, auth: dict = Depends(get_user_from_auth)):
+    return save_user_config(auth["sub"], req.data, req.partial)
 
 
 @router.post("/chat")

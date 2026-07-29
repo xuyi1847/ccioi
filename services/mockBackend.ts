@@ -5,11 +5,11 @@ const IS_DEV = window.location.hostname === 'localhost' || window.location.hostn
 const API_BASE = IS_DEV ? 'http://127.0.0.1:8000' : 'https://www.ccioi.com/api';
 
 export const mockBackend = {
-  async login(email: string): Promise<User> {
+  async login(email: string, password: string): Promise<User> {
     const response = await fetch(`${API_BASE}/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email })
+      body: JSON.stringify({ email, password })
     });
     
     if (!response.ok) {
@@ -25,12 +25,13 @@ export const mockBackend = {
     return userWithToken;
   },
 
-  async register(email: string, name: string, inviteCode: string): Promise<User> {
+  async register(email: string, password: string, name: string, inviteCode: string): Promise<User> {
     const response = await fetch(`${API_BASE}/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         email, 
+        password,
         name, 
         invite_code: inviteCode 
       })
@@ -55,15 +56,24 @@ export const mockBackend = {
   },
 
   async getCurrentUser(): Promise<User | null> {
-    const data = localStorage.getItem('ccioi_current_user_data');
-    if (!data) return null;
+    const token = localStorage.getItem('ccioi_auth_token');
+    if (!token) return null;
     try {
-      const user = JSON.parse(data);
-      const token = localStorage.getItem('ccioi_auth_token');
-      if (token) user.token = token;
+      const response = await fetch(`${API_BASE}/me`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!response.ok) {
+        await this.logout();
+        return null;
+      }
+      const data = await response.json();
+      const user = { ...data.user, token };
+      localStorage.setItem('ccioi_current_user_data', JSON.stringify(user));
       return user;
     } catch {
-      return null;
+      const cached = localStorage.getItem('ccioi_current_user_data');
+      if (!cached) return null;
+      return { ...JSON.parse(cached), token };
     }
   },
 

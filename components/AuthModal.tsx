@@ -29,11 +29,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
     try {
       if (isLogin) {
-        await login(email);
+        await login(email, password);
       } else {
         if (!name) throw new Error("Name is required");
         if (!inviteCode) throw new Error("Invite code is required");
-        await register(email, name, inviteCode);
+        await register(email, password, name, inviteCode);
       }
       onClose();
     } catch (err: any) {
@@ -123,6 +123,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
+                  minLength={8}
                   className="w-full bg-app-surface-hover border border-app-border rounded-xl py-2.5 pl-10 pr-4 text-app-text text-sm outline-none focus:border-app-accent transition-colors"
                   required
                 />

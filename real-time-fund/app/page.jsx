@@ -47,7 +47,6 @@ import GroupManageModal from "./components/GroupManageModal";
 import GroupModal from "./components/GroupModal";
 import HoldingEditModal from "./components/HoldingEditModal";
 import HoldingActionModal from "./components/HoldingActionModal";
-import LoginModal from "./components/LoginModal";
 import ScanImportConfirmModal from "./components/ScanImportConfirmModal";
 import ScanImportProgressModal from "./components/ScanImportProgressModal";
 import ScanPickModal from "./components/ScanPickModal";
@@ -61,7 +60,7 @@ import UpdatePromptModal from "./components/UpdatePromptModal";
 import RefreshButton from "./components/RefreshButton";
 import WeChatModal from "./components/WeChatModal";
 import DcaModal from "./components/DcaModal";
-import { supabase, isSupabaseConfigured } from './lib/supabase';
+import { accountApi } from './lib/accountApi';
 import { toast as sonnerToast } from 'sonner';
 import { recordValuation, getAllValuationSeries, clearFund } from './lib/valuationTimeseries';
 import { loadHolidaysForYears, isTradingDay as isDateTradingDay } from './lib/tradingCalendar';
@@ -71,6 +70,8 @@ import PcFundTable from './components/PcFundTable';
 import MobileFundTable from './components/MobileFundTable';
 import { useFundFuzzyMatcher } from './hooks/useFundFuzzyMatcher';
 import Logo from '../../components/Logo';
+import AuthModal from '../../components/AuthModal';
+import { useAuth } from '../../context/AuthContext';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -145,14 +146,13 @@ function ScanButton({ onClick, disabled }) {
 }
 
 export default function HomePage() {
+  const { user, isLoading: isAuthLoading, logout } = useAuth();
   const [funds, setFunds] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const timerRef = useRef(null);
   const refreshCycleStartRef = useRef(Date.now());
   const refreshingRef = useRef(false);
-  const isLoggingOutRef = useRef(false);
-  const isExplicitLoginRef = useRef(false);
 
   // 刷新频率状态
   const [refreshMs, setRefreshMs] = useState(60000);
@@ -220,8 +220,7 @@ export default function HomePage() {
   // 全局隐藏金额状态（影响分组汇总、列表和卡片）
   const [maskAmounts, setMaskAmounts] = useState(false);
 
-  // 用户认证状态
-  const [user, setUser] = useState(null);
+  // 用户认证状态由主站 AuthProvider 统一管理
   const [lastSyncTime, setLastSyncTime] = useState(null);
 
   useEffect(() => {
@@ -237,11 +236,6 @@ export default function HomePage() {
   }, []);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginLoading, setLoginLoading] = useState(false);
-  const [loginError, setLoginError] = useState('');
-  const [loginSuccess, setLoginSuccess] = useState('');
-  const [loginOtp, setLoginOtp] = useState('');
 
   const userAvatar = useMemo(() => {
     if (!user?.id) return '';
@@ -1178,10 +1172,6 @@ export default function HomePage() {
 
   const handleOpenLogin = () => {
     setUserMenuOpen(false);
-    if (!isSupabaseConfigured) {
-      showToast('未配置 Supabase，无法登录', 'error');
-      return;
-    }
     setLoginModalOpen(true);
   };
 
@@ -2078,13 +2068,7 @@ export default function HomePage() {
     const init = async () => {
       try {
         // 已登录用户：不在此处调用 refreshAll，等 fetchCloudConfig 完成后由 applyCloudConfig 统一刷新
-        let shouldRefreshFromLocal = true;
-        if (isSupabaseConfigured) {
-          const { data, error } = await supabase.auth.getSession();
-          if (!cancelled && !error && data?.session?.user) {
-            shouldRefreshFromLocal = false;
-          }
-        }
+        const shouldRefreshFromLocal = !user;
         if (cancelled) return;
 
         const saved = JSON.parse(localStorage.getItem('funds') || '[]');
@@ -2166,7 +2150,7 @@ export default function HomePage() {
     };
     init();
     return () => { cancelled = true; };
-  }, [isSupabaseConfigured]);
+  }, [user?.id]);
 
   // 记录用户当前选择的分组（仅本地存储，不同步云端）
   useEffect(() => {
@@ -2184,237 +2168,21 @@ export default function HomePage() {
     } catch { }
   }, [theme]);
 
-  // 初始化认证状态监听
+  // 登录后读取该用户的云端配置；登录弹窗与主站共用同一套账号。
   useEffect(() => {
-    if (!isSupabaseConfigured) {
-      setUser(null);
+    if (isAuthLoading) return;
+    if (!user?.id) {
       setUserMenuOpen(false);
       return;
     }
-    const clearAuthState = () => {
-      setUser(null);
-      setUserMenuOpen(false);
-    };
+    setLoginModalOpen(false);
+    fetchCloudConfig(user.id, true);
+  }, [user?.id, isAuthLoading]);
 
-    const handleSession = async (session, event, isExplicitLogin = false) => {
-      if (!session?.user) {
-        if (event === 'SIGNED_OUT' && !isLoggingOutRef.current) {
-          setLoginError('会话已过期，请重新登录');
-          setLoginModalOpen(true);
-        }
-        isLoggingOutRef.current = false;
-        clearAuthState();
-        return;
-      }
-      if (session.expires_at && session.expires_at * 1000 <= Date.now()) {
-        isLoggingOutRef.current = true;
-        await supabase.auth.signOut({ scope: 'local' });
-        try {
-          const storageKeys = Object.keys(localStorage);
-          storageKeys.forEach((key) => {
-            if (key === 'supabase.auth.token' || (key.startsWith('sb-') && key.endsWith('-auth-token'))) {
-              storageHelper.removeItem(key);
-            }
-          });
-        } catch { }
-        try {
-          const sessionKeys = Object.keys(sessionStorage);
-          sessionKeys.forEach((key) => {
-            if (key === 'supabase.auth.token' || (key.startsWith('sb-') && key.endsWith('-auth-token'))) {
-              sessionStorage.removeItem(key);
-            }
-          });
-        } catch { }
-        clearAuthState();
-        setLoginError('会话已过期，请重新登录');
-        showToast('会话已过期，请重新登录', 'error');
-        setLoginModalOpen(true);
-        return;
-      }
-      setUser(session.user);
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
-        setLoginModalOpen(false);
-        setLoginEmail('');
-        setLoginSuccess('');
-        setLoginError('');
-      }
-      // 仅在明确的登录动作（SIGNED_IN）时检查冲突；INITIAL_SESSION（刷新页面等）不检查，直接以云端为准
-      fetchCloudConfig(session.user.id, isExplicitLogin);
-    };
-
-    supabase.auth.getSession().then(async ({ data, error }) => {
-      if (error) {
-        clearAuthState();
-        return;
-      }
-      await handleSession(data?.session ?? null, 'INITIAL_SESSION');
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // INITIAL_SESSION 会由 getSession() 主动触发，这里不再重复处理
-      if (event === 'INITIAL_SESSION') return;
-      const isExplicitLogin = event === 'SIGNED_IN' && isExplicitLoginRef.current;
-      await handleSession(session ?? null, event, isExplicitLogin);
-      if (event === 'SIGNED_IN') {
-        isExplicitLoginRef.current = false;
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // 实时同步
-  // useEffect(() => {
-  //   if (!isSupabaseConfigured || !user?.id) return;
-  //   const channel = supabase
-  //     .channel(`user-configs-${user.id}`)
-  //     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'user_configs', filter: `user_id=eq.${user.id}` }, async (payload) => {
-  //       const incoming = payload?.new?.data;
-  //       if (!isPlainObject(incoming)) return;
-  //       const incomingComparable = getComparablePayload(incoming);
-  //       if (!incomingComparable || incomingComparable === lastSyncedRef.current) return;
-  //       await applyCloudConfig(incoming, payload.new.updated_at);
-  //     })
-  //     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'user_configs', filter: `user_id=eq.${user.id}` }, async (payload) => {
-  //       const incoming = payload?.new?.data;
-  //       if (!isPlainObject(incoming)) return;
-  //       const incomingComparable = getComparablePayload(incoming);
-  //       if (!incomingComparable || incomingComparable === lastSyncedRef.current) return;
-  //       await applyCloudConfig(incoming, payload.new.updated_at);
-  //     })
-  //     .subscribe();
-  //   return () => {
-  //     supabase.removeChannel(channel);
-  //   };
-  // }, [user?.id]);
-
-  const handleSendOtp = async (e) => {
-    e.preventDefault();
-    setLoginError('');
-    setLoginSuccess('');
-    if (!isSupabaseConfigured) {
-      showToast('未配置 Supabase，无法登录', 'error');
-      return;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!loginEmail.trim()) {
-      setLoginError('请输入邮箱地址');
-      return;
-    }
-    if (!emailRegex.test(loginEmail.trim())) {
-      setLoginError('请输入有效的邮箱地址');
-      return;
-    }
-
-    setLoginLoading(true);
-    try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email: loginEmail.trim(),
-        options: {
-          shouldCreateUser: true
-        }
-      });
-      if (error) throw error;
-      setLoginSuccess('验证码已发送，请查收邮箱输入验证码完成注册/登录');
-    } catch (err) {
-      if (err.message?.includes('rate limit')) {
-        setLoginError('请求过于频繁，请稍后再试');
-      } else if (err.message?.includes('network')) {
-        setLoginError('网络错误，请检查网络连接');
-      } else {
-        setLoginError(err.message || '发送验证码失败，请稍后再试');
-      }
-    } finally {
-      setLoginLoading(false);
-    }
-  };
-
-  const handleVerifyEmailOtp = async () => {
-    setLoginError('');
-    if (!loginOtp || loginOtp.length < 4) {
-      setLoginError('请输入邮箱中的验证码');
-      return;
-    }
-    if (!isSupabaseConfigured) {
-      showToast('未配置 Supabase，无法登录', 'error');
-      return;
-    }
-    try {
-      isExplicitLoginRef.current = true;
-      setLoginLoading(true);
-      const { data, error } = await supabase.auth.verifyOtp({
-        email: loginEmail.trim(),
-        token: loginOtp.trim(),
-        type: 'email'
-      });
-      if (error) throw error;
-      if (data?.user) {
-        setLoginModalOpen(false);
-        setLoginEmail('');
-        setLoginOtp('');
-        setLoginSuccess('');
-        setLoginError('');
-      }
-    } catch (err) {
-      setLoginError(err.message || '验证失败，请检查验证码或稍后再试');
-      isExplicitLoginRef.current = false;
-    }
-    setLoginLoading(false);
-  };
-
-  // 登出
   const handleLogout = async () => {
-    isLoggingOutRef.current = true;
-    if (!isSupabaseConfigured) {
-      setLoginModalOpen(false);
-      setLoginError('');
-      setLoginSuccess('');
-      setLoginEmail('');
-      setLoginOtp('');
-      setUserMenuOpen(false);
-      setUser(null);
-      return;
-    }
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        const { error } = await supabase.auth.signOut({ scope: 'local' });
-        if (error && error.code !== 'session_not_found') {
-          throw error;
-        }
-      }
-    } catch (err) {
-      showToast(err.message, 'error')
-      console.error('登出失败', err);
-    } finally {
-      try {
-        await supabase.auth.signOut({ scope: 'local' });
-      } catch { }
-      try {
-        const storageKeys = Object.keys(localStorage);
-        storageKeys.forEach((key) => {
-          if (key === 'supabase.auth.token' || (key.startsWith('sb-') && key.endsWith('-auth-token'))) {
-            storageHelper.removeItem(key);
-          }
-        });
-      } catch { }
-      try {
-        const sessionKeys = Object.keys(sessionStorage);
-        sessionKeys.forEach((key) => {
-          if (key === 'supabase.auth.token' || (key.startsWith('sb-') && key.endsWith('-auth-token'))) {
-            sessionStorage.removeItem(key);
-          }
-        });
-      } catch { }
-      setLoginModalOpen(false);
-      setLoginError('');
-      setLoginSuccess('');
-      setLoginEmail('');
-      setLoginOtp('');
-      setUserMenuOpen(false);
-      setUser(null);
-    }
+    await logout();
+    setLoginModalOpen(false);
+    setUserMenuOpen(false);
   };
 
   // 关闭用户菜单（点击外部时）
@@ -3340,58 +3108,26 @@ export default function HomePage() {
   const fetchCloudConfig = async (userId, checkConflict = false) => {
     if (!userId) return;
     try {
-      const { data: meta, error: metaError } = await supabase
-        .from('user_configs')
-        .select(`id, updated_at${checkConflict ? ', data' : ''}`)
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (metaError) throw metaError;
-
-      if (!meta?.id) {
-        const { error: insertError } = await supabase
-          .from('user_configs')
-          .insert({ user_id: userId });
-        if (insertError) throw insertError;
-        setCloudConfigModal({ open: true, userId, type: 'empty' });
-        return;
-      }
-      if (checkConflict) {
-        setCloudConfigModal({ open: true, userId, type: 'conflict', cloudData: meta.data });
-        return;
-      }
-
+      const result = await accountApi.getConfig();
+      const cloudData = result?.data;
       const localUpdatedAt = window.localStorage.getItem('localUpdatedAt');
-      if (localUpdatedAt && meta.updated_at && new Date(meta.updated_at) < new Date(localUpdatedAt)) {
+      if (localUpdatedAt && result?.updated_at && new Date(result.updated_at) < new Date(localUpdatedAt)) {
         return;
       }
-
-      const { data, error } = await supabase
-        .from('user_configs')
-        .select('id, data, updated_at')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      if (data?.data && isPlainObject(data.data) && Object.keys(data.data).length > 0) {
+      if (isPlainObject(cloudData) && Object.keys(cloudData).length > 0) {
         const localPayload = collectLocalPayload();
         const localComparable = getComparablePayload(localPayload);
-        const cloudComparable = getComparablePayload(data.data);
+        const cloudComparable = getComparablePayload(cloudData);
 
         if (localComparable !== cloudComparable) {
-          // 如果数据不一致
           if (checkConflict) {
-            // 只有明确要求检查冲突时才提示（例如刚登录时）
-            setCloudConfigModal({ open: true, userId, type: 'conflict', cloudData: data.data });
+            setCloudConfigModal({ open: true, userId, type: 'conflict', cloudData });
             return;
           }
-          // 否则直接覆盖本地（例如已登录状态下的刷新）
-          await applyCloudConfig(data.data, data.updated_at);
+          await applyCloudConfig(cloudData, result.updated_at);
           return;
         }
-
-        await applyCloudConfig(data.data, data.updated_at);
+        await applyCloudConfig(cloudData, result.updated_at);
         return;
       }
       setCloudConfigModal({ open: true, userId, type: 'empty' });
@@ -3408,46 +3144,10 @@ export default function HomePage() {
     try {
       setIsSyncing(true);
       const dataToSync = payload || collectLocalPayload(); // Fallback to full sync if no payload
-      const now = nowInTz().toISOString();
-
-      if (isPartial) {
-        // 增量更新：使用 RPC 调用
-        const { error: rpcError } = await supabase.rpc('update_user_config_partial', {
-          payload: dataToSync
-        });
-
-        if (rpcError) {
-          console.error('增量同步失败，尝试全量同步', rpcError);
-          // RPC 失败回退到全量更新
-          const fullPayload = collectLocalPayload();
-          const { error } = await supabase
-            .from('user_configs')
-            .upsert(
-              {
-                user_id: userId,
-                data: fullPayload,
-                updated_at: now
-              },
-              { onConflict: 'user_id' }
-            );
-          if (error) throw error;
-        }
-      } else {
-        // 全量更新
-        const { error } = await supabase
-          .from('user_configs')
-          .upsert(
-            {
-              user_id: userId,
-              data: dataToSync,
-              updated_at: now
-            },
-            { onConflict: 'user_id' }
-          );
-        if (error) throw error;
-      }
-
-      storageHelper.setItem('localUpdatedAt', now);
+      const result = await accountApi.saveConfig(dataToSync, isPartial);
+      const updatedAt = result?.updated_at || nowInTz().toISOString();
+      storageHelper.setItem('localUpdatedAt', updatedAt);
+      setLastSyncTime(updatedAt);
 
       if (showTip) {
         setSuccessModal({ open: true, message: '已同步云端配置' });
@@ -5103,26 +4803,7 @@ export default function HomePage() {
       </AnimatePresence>
 
       {/* 登录模态框 */}
-      {loginModalOpen && (
-        <LoginModal
-          onClose={() => {
-            setLoginModalOpen(false);
-            setLoginError('');
-            setLoginSuccess('');
-            setLoginEmail('');
-            setLoginOtp('');
-          }}
-          loginEmail={loginEmail}
-          setLoginEmail={setLoginEmail}
-          loginOtp={loginOtp}
-          setLoginOtp={setLoginOtp}
-          loginLoading={loginLoading}
-          loginError={loginError}
-          loginSuccess={loginSuccess}
-          handleSendOtp={handleSendOtp}
-          handleVerifyEmailOtp={handleVerifyEmailOtp}
-        />
-      )}
+      <AuthModal isOpen={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
 
       {/* 全局轻提示 Toast */}
       <AnimatePresence>

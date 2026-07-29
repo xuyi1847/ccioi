@@ -6,8 +6,8 @@ import { mockBackend } from '../services/mockBackend';
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (email: string) => Promise<void>;
-  register: (email: string, name: string, inviteCode: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, name: string, inviteCode: string) => Promise<void>;
   logout: () => Promise<void>;
   recharge: (amount: number) => Promise<void>;
 }
@@ -33,13 +33,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const login = async (email: string) => {
-    const u = await mockBackend.login(email);
+  const login = async (email: string, password: string) => {
+    const u = await mockBackend.login(email, password);
     setUser(u);
   };
 
-  const register = async (email: string, name: string, inviteCode: string) => {
-    const u = await mockBackend.register(email, name, inviteCode);
+  const register = async (email: string, password: string, name: string, inviteCode: string) => {
+    const u = await mockBackend.register(email, password, name, inviteCode);
     setUser(u);
   };
 
