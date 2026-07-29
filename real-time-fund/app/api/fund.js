@@ -40,12 +40,22 @@ export const loadScript = (url) => {
         const script = document.createElement('script');
         script.src = url;
         script.async = true;
+        let done = false;
+        const timer = setTimeout(() => {
+          if (done) return;
+          done = true;
+          cleanup();
+          resolve({ ok: false, error: '请求超时' });
+        }, 10000);
 
         const cleanup = () => {
+          clearTimeout(timer);
           if (document.body.contains(script)) document.body.removeChild(script);
         };
 
         script.onload = () => {
+          if (done) return;
+          done = true;
           cleanup();
           let apidata;
           try {
@@ -57,6 +67,8 @@ export const loadScript = (url) => {
         };
 
         script.onerror = () => {
+          if (done) return;
+          done = true;
           cleanup();
           resolve({ ok: false, error: '数据加载失败' });
         };
@@ -76,23 +88,14 @@ export const loadScript = (url) => {
 
 export const fetchFundNetValue = async (code, date) => {
   if (typeof window === 'undefined') return null;
-  const url = `https://fundf10.eastmoney.com/F10DataApi.aspx?type=lsjz&code=${code}&page=1&per=1&sdate=${date}&edate=${date}`;
   try {
-    const apidata = await loadScript(url);
-    if (apidata && apidata.content) {
-      const content = apidata.content;
-      if (content.includes('暂无数据')) return null;
-      const rows = content.split('<tr>');
-      for (const row of rows) {
-        if (row.includes(`<td>${date}</td>`)) {
-          const cells = row.match(/<td[^>]*>(.*?)<\/td>/g);
-          if (cells && cells.length >= 2) {
-            const valStr = cells[1].replace(/<[^>]+>/g, '');
-            const val = parseFloat(valStr);
-            return isNaN(val) ? null : val;
-          }
-        }
-      }
+    const data = await fetchFundPingzhongdata(String(code).trim());
+    const trend = Array.isArray(data?.Data_netWorthTrend) ? data.Data_netWorthTrend : [];
+    for (const point of trend) {
+      if (!Number.isFinite(Number(point?.x))) continue;
+      if (dayjs(Number(point.x)).tz(TZ).format('YYYY-MM-DD') !== date) continue;
+      const value = Number(point.y);
+      return Number.isFinite(value) ? value : null;
     }
     return null;
   } catch (e) {
@@ -232,12 +235,24 @@ export const fetchFundDataFallback = async (c) => {
     } catch (e) {
     }
     try {
-      const url = `https://fundf10.eastmoney.com/F10DataApi.aspx?type=lsjz&code=${c}&page=1&per=1&sdate=&edate=`;
-      const apidata = await loadScript(url);
-      const content = apidata?.content || '';
-      const latest = parseLatestNetValueFromLsjzContent(content);
+      const data = await fetchFundPingzhongdata(c);
+      const trend = Array.isArray(data?.Data_netWorthTrend) ? data.Data_netWorthTrend : [];
+      const valid = trend
+        .filter((point) => Number.isFinite(Number(point?.x)) && Number.isFinite(Number(point?.y)))
+        .sort((a, b) => Number(a.x) - Number(b.x));
+      const point = valid[valid.length - 1];
+      const previous = valid[valid.length - 2];
+      const latest = point ? {
+        date: dayjs(Number(point.x)).tz(TZ).format('YYYY-MM-DD'),
+        nav: Number(point.y),
+        growth: Number.isFinite(Number(point.equityReturn))
+          ? Number(point.equityReturn)
+          : (previous && Number(previous.y) > 0
+            ? ((Number(point.y) - Number(previous.y)) / Number(previous.y)) * 100
+            : null)
+      } : null;
       if (latest && latest.nav) {
-        const name = fundName || `未知基金(${c})`;
+        const name = data?.fundName || fundName || `未知基金(${c})`;
         resolve({
           code: c,
           name,
@@ -265,194 +280,136 @@ export const fetchFundData = async (c) => {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     throw new Error('无浏览器环境');
   }
-  return new Promise(async (resolve, reject) => {
-    const gzUrl = `https://fundgz.1234567.com.cn/js/${c}.js?rt=${Date.now()}`;
-    const scriptGz = document.createElement('script');
-    scriptGz.src = gzUrl;
-    const originalJsonpgz = window.jsonpgz;
-    window.jsonpgz = (json) => {
-      window.jsonpgz = originalJsonpgz;
-      if (!json || typeof json !== 'object') {
-        fetchFundDataFallback(c).then(resolve).catch(reject);
-        return;
-      }
-      const gszzlNum = Number(json.gszzl);
-      const gzData = {
-        code: json.fundcode,
-        name: json.name,
-        dwjz: json.dwjz,
-        gsz: json.gsz,
-        gztime: json.gztime,
-        jzrq: json.jzrq,
-        gszzl: Number.isFinite(gszzlNum) ? gszzlNum : json.gszzl
-      };
-      const lsjzPromise = new Promise((resolveT) => {
-        const url = `https://fundf10.eastmoney.com/F10DataApi.aspx?type=lsjz&code=${c}&page=1&per=1&sdate=&edate=`;
-        loadScript(url)
-          .then((apidata) => {
-            const content = apidata?.content || '';
-            const latest = parseLatestNetValueFromLsjzContent(content);
-            if (latest && latest.nav) {
-              resolveT({
-                dwjz: String(latest.nav),
-                zzl: Number.isFinite(latest.growth) ? latest.growth : null,
-                jzrq: latest.date
-              });
-            } else {
-              resolveT(null);
-            }
-          })
-          .catch(() => resolveT(null));
-      });
-      const holdingsPromise = new Promise((resolveH) => {
-        const holdingsUrl = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${c}&topline=10&year=&month=&_=${Date.now()}`;
-        const holdingsCacheKey = `fund_holdings_archives_${c}`;
-        cachedRequest(
-          () => loadScript(holdingsUrl),
-          holdingsCacheKey,
-          { cacheTime: 60 * 60 * 1000 }
-        ).then(async (apidata) => {
-          let holdings = [];
-          const html = apidata?.content || '';
-          const holdingsReportDate = extractHoldingsReportDate(html);
-          const holdingsIsLastQuarter = isLastQuarterReport(holdingsReportDate);
+  const code = String(c || '').trim();
+  if (!/^\d{6}$/.test(code)) throw new Error('基金编码无效');
 
-          // 如果不是上一季度末的披露数据，则不展示重仓（并避免继续解析/请求行情）
-          if (!holdingsIsLastQuarter) {
-            resolveH({ holdings: [], holdingsReportDate, holdingsIsLastQuarter: false });
-            return;
-          }
+  const requestJson = async (url, timeoutMs = 8000) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return await response.json();
+    } finally {
+      clearTimeout(timer);
+    }
+  };
 
-          const headerRow = (html.match(/<thead[\s\S]*?<tr[\s\S]*?<\/tr>[\s\S]*?<\/thead>/i) || [])[0] || '';
-          const headerCells = (headerRow.match(/<th[\s\S]*?>([\s\S]*?)<\/th>/gi) || []).map(th => th.replace(/<[^>]*>/g, '').trim());
-          let idxCode = -1, idxName = -1, idxWeight = -1;
-          headerCells.forEach((h, i) => {
-            const t = h.replace(/\s+/g, '');
-            if (idxCode < 0 && (t.includes('股票代码') || t.includes('证券代码'))) idxCode = i;
-            if (idxName < 0 && (t.includes('股票名称') || t.includes('证券名称'))) idxName = i;
-            if (idxWeight < 0 && (t.includes('占净值比例') || t.includes('占比'))) idxWeight = i;
-          });
-          const rows = html.match(/<tbody[\s\S]*?<\/tbody>/i) || [];
-          const dataRows = rows.length ? rows[0].match(/<tr[\s\S]*?<\/tr>/gi) || [] : html.match(/<tr[\s\S]*?<\/tr>/gi) || [];
-          for (const r of dataRows) {
-            const tds = (r.match(/<td[\s\S]*?>([\s\S]*?)<\/td>/gi) || []).map(td => td.replace(/<[^>]*>/g, '').trim());
-            if (!tds.length) continue;
-            let code = '';
-            let name = '';
-            let weight = '';
-            if (idxCode >= 0 && tds[idxCode]) {
-              const m = tds[idxCode].match(/(\d{6})/);
-              code = m ? m[1] : tds[idxCode];
-            } else {
-              const codeIdx = tds.findIndex(txt => /^\d{6}$/.test(txt));
-              if (codeIdx >= 0) code = tds[codeIdx];
-            }
-            if (idxName >= 0 && tds[idxName]) {
-              name = tds[idxName];
-            } else if (code) {
-              const i = tds.findIndex(txt => txt && txt !== code && !/%$/.test(txt));
-              name = i >= 0 ? tds[i] : '';
-            }
-            if (idxWeight >= 0 && tds[idxWeight]) {
-              const wm = tds[idxWeight].match(/([\d.]+)\s*%/);
-              weight = wm ? `${wm[1]}%` : tds[idxWeight];
-            } else {
-              const wIdx = tds.findIndex(txt => /\d+(?:\.\d+)?\s*%/.test(txt));
-              weight = wIdx >= 0 ? tds[wIdx].match(/([\d.]+)\s*%/)?.[1] + '%' : '';
-            }
-            if (code || name || weight) {
-              holdings.push({ code, name, weight, change: null });
-            }
-          }
-          holdings = holdings.slice(0, 10);
-          const needQuotes = holdings.filter(h => /^\d{6}$/.test(h.code) || /^\d{5}$/.test(h.code));
-          if (needQuotes.length) {
-            try {
-              const tencentCodes = needQuotes.map(h => {
-                const cd = String(h.code || '');
-                if (/^\d{6}$/.test(cd)) {
-                  const pfx = cd.startsWith('6') || cd.startsWith('9') ? 'sh' : ((cd.startsWith('4') || cd.startsWith('8')) ? 'bj' : 'sz');
-                  return `s_${pfx}${cd}`;
-                }
-                if (/^\d{5}$/.test(cd)) {
-                  return `s_hk${cd}`;
-                }
-                return null;
-              }).filter(Boolean).join(',');
-              if (!tencentCodes) {
-                resolveH(holdings);
-                return;
-              }
-              const quoteUrl = `https://qt.gtimg.cn/q=${tencentCodes}`;
-              await new Promise((resQuote) => {
-                const scriptQuote = document.createElement('script');
-                scriptQuote.src = quoteUrl;
-                scriptQuote.onload = () => {
-                  needQuotes.forEach(h => {
-                    const cd = String(h.code || '');
-                    let varName = '';
-                    if (/^\d{6}$/.test(cd)) {
-                      const pfx = cd.startsWith('6') || cd.startsWith('9') ? 'sh' : ((cd.startsWith('4') || cd.startsWith('8')) ? 'bj' : 'sz');
-                      varName = `v_s_${pfx}${cd}`;
-                    } else if (/^\d{5}$/.test(cd)) {
-                      varName = `v_s_hk${cd}`;
-                    } else {
-                      return;
-                    }
-                    const dataStr = window[varName];
-                    if (dataStr) {
-                      const parts = dataStr.split('~');
-                      if (parts.length > 5) {
-                        h.change = parseFloat(parts[5]);
-                      }
-                    }
-                  });
-                  if (document.body.contains(scriptQuote)) document.body.removeChild(scriptQuote);
-                  resQuote();
-                };
-                scriptQuote.onerror = () => {
-                  if (document.body.contains(scriptQuote)) document.body.removeChild(scriptQuote);
-                  resQuote();
-                };
-                document.body.appendChild(scriptQuote);
-              });
-            } catch (e) {
-            }
-          }
-          resolveH({ holdings, holdingsReportDate, holdingsIsLastQuarter });
-        }).catch(() => resolveH({ holdings: [], holdingsReportDate: null, holdingsIsLastQuarter: false }));
-      });
-      Promise.all([lsjzPromise, holdingsPromise]).then(([tData, holdingsResult]) => {
-        const {
-          holdings,
-          holdingsReportDate,
-          holdingsIsLastQuarter
-        } = holdingsResult || {};
-        if (tData) {
-          if (tData.jzrq && (!gzData.jzrq || tData.jzrq >= gzData.jzrq)) {
-            gzData.dwjz = tData.dwjz;
-            gzData.jzrq = tData.jzrq;
-            gzData.zzl = tData.zzl;
-          }
-        }
-        resolve({
-          ...gzData,
-          holdings,
-          holdingsReportDate,
-          holdingsIsLastQuarter
-        });
-      });
-    };
-    scriptGz.onerror = () => {
-      window.jsonpgz = originalJsonpgz;
-      if (document.body.contains(scriptGz)) document.body.removeChild(scriptGz);
-      reject(new Error('基金数据加载失败'));
-    };
-    document.body.appendChild(scriptGz);
-    setTimeout(() => {
-      if (document.body.contains(scriptGz)) document.body.removeChild(scriptGz);
-    }, 5000);
+  const valuationPromise = cachedRequest(
+    () => requestJson(
+      `https://fundcomapi.tiantianfunds.com/mm/newCore/FundValuationLast?FCODES=${encodeURIComponent(code)}&FIELDS=FCODE%2CSHORTNAME%2CGSZZL%2CGZTIME%2CGSZ%2CNAV%2CPDATE`
+    ),
+    `fund_valuation_last_${code}`,
+    { cacheTime: 10000 }
+  );
+
+  const holdingsCacheKey = `fund_holdings_mobile_${code}`;
+  const holdingsPromise = cachedRequest(
+    () => requestJson(
+      `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNInverstPosition?FCODE=${encodeURIComponent(code)}&deviceid=Wap&plat=WAP&product=EFund&version=2.0.0`
+    ),
+    holdingsCacheKey,
+    { cacheTime: 60 * 60 * 1000 }
+  ).catch(() => {
+    clearCachedRequest(holdingsCacheKey);
+    return null;
   });
+
+  let valuation;
+  try {
+    const response = await valuationPromise;
+    valuation = Array.isArray(response?.data)
+      ? response.data.find((item) => String(item?.FCODE || '') === code)
+      : null;
+    if (!response?.success || !valuation) throw new Error('估值接口未返回基金数据');
+  } catch (e) {
+    clearCachedRequest(`fund_valuation_last_${code}`);
+    return fetchFundDataFallback(code);
+  }
+
+  const holdingsResponse = await holdingsPromise;
+  const stockRows = Array.isArray(holdingsResponse?.Datas?.fundStocks)
+    ? holdingsResponse.Datas.fundStocks
+    : [];
+  const holdings = stockRows.slice(0, 10).map((item) => ({
+    code: String(item?.GPDM || ''),
+    name: String(item?.GPJC || ''),
+    weight: item?.JZBL == null ? '' : `${item.JZBL}%`,
+    change: null
+  }));
+  const quoteCodes = holdings
+    .map((holding) => {
+      if (/^\d{6}$/.test(holding.code)) {
+        const prefix = holding.code.startsWith('6') || holding.code.startsWith('9')
+          ? 'sh'
+          : (holding.code.startsWith('4') || holding.code.startsWith('8') ? 'bj' : 'sz');
+        return `s_${prefix}${holding.code}`;
+      }
+      if (/^\d{5}$/.test(holding.code)) return `s_hk${holding.code}`;
+      return null;
+    })
+    .filter(Boolean);
+  if (quoteCodes.length) {
+    await new Promise((resolve) => {
+      const script = document.createElement('script');
+      script.src = `https://qt.gtimg.cn/q=${quoteCodes.join(',')}&_=${Date.now()}`;
+      script.async = true;
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        if (document.body.contains(script)) document.body.removeChild(script);
+        resolve();
+      };
+      const timer = setTimeout(finish, 5000);
+      script.onload = () => {
+        holdings.forEach((holding) => {
+          let variable = '';
+          if (/^\d{6}$/.test(holding.code)) {
+            const prefix = holding.code.startsWith('6') || holding.code.startsWith('9')
+              ? 'sh'
+              : (holding.code.startsWith('4') || holding.code.startsWith('8') ? 'bj' : 'sz');
+            variable = `v_s_${prefix}${holding.code}`;
+          } else if (/^\d{5}$/.test(holding.code)) {
+            variable = `v_s_hk${holding.code}`;
+          }
+          const parts = variable && typeof window[variable] === 'string'
+            ? window[variable].split('~')
+            : [];
+          const change = Number(parts[5]);
+          if (Number.isFinite(change)) holding.change = change;
+        });
+        finish();
+      };
+      script.onerror = finish;
+      document.body.appendChild(script);
+    });
+  }
+
+  const now = nowInTz();
+  const currentQuarterStartMonth = Math.floor(now.month() / 3) * 3;
+  const previousQuarterEnd = now
+    .month(currentQuarterStartMonth)
+    .startOf('month')
+    .subtract(1, 'day')
+    .format('YYYY-MM-DD');
+  const gsz = valuation.GSZ == null ? null : Number(valuation.GSZ);
+  const gszzl = valuation.GSZZL == null ? null : Number(valuation.GSZZL);
+
+  return {
+    code,
+    name: String(valuation.SHORTNAME || ''),
+    dwjz: valuation.NAV == null ? null : String(valuation.NAV),
+    gsz: Number.isFinite(gsz) ? gsz : null,
+    gztime: valuation.GZTIME ? String(valuation.GZTIME) : null,
+    jzrq: valuation.PDATE ? String(valuation.PDATE) : null,
+    gszzl: Number.isFinite(gszzl) ? gszzl : null,
+    noValuation: !Number.isFinite(gsz) || !Number.isFinite(gszzl),
+    holdings,
+    holdingsReportDate: stockRows.length ? previousQuarterEnd : null,
+    holdingsIsLastQuarter: stockRows.length > 0
+  };
 };
 
 export const searchFunds = async (val) => {
