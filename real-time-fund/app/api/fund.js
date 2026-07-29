@@ -276,6 +276,57 @@ export const fetchFundDataFallback = async (c) => {
   });
 };
 
+const sinaEstimateInflight = new Map();
+
+const fetchSinaEstimate = (code) => {
+  const existing = sinaEstimateInflight.get(code);
+  if (existing) return existing;
+
+  const promise = new Promise((resolve) => {
+    const callbackName = `FundEstimate_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const script = document.createElement('script');
+    let done = false;
+    const finish = (value) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      delete window[callbackName];
+      if (document.body.contains(script)) document.body.removeChild(script);
+      resolve(value);
+    };
+    const timer = setTimeout(() => finish(null), 8000);
+    window[callbackName] = (response) => {
+      const points = Array.isArray(response?.result?.data?.networth)
+        ? response.result.data.networth
+        : [];
+      const point = points[points.length - 1];
+      if (!point) {
+        finish(null);
+        return;
+      }
+      const gsz = Number(point.pre_nav);
+      const growthRate = Number(point.growthrate);
+      finish({
+        gsz: Number.isFinite(gsz) ? gsz : null,
+        gszzl: Number.isFinite(growthRate) ? growthRate * 100 : null,
+        gztime: point.pre_date && point.min_time
+          ? `${point.pre_date} ${point.min_time}`.replace(/:(\d{2}):\d{2}$/, ':$1')
+          : null,
+        valuationSource: 'sina'
+      });
+    };
+    script.src = `https://stock.finance.sina.com.cn/fundInfo/api/openapi.php/FdFundService.getEstimateNetworthPic?symbol=${encodeURIComponent(code)}&callback=${callbackName}`;
+    script.async = true;
+    script.onerror = () => finish(null);
+    document.body.appendChild(script);
+  }).finally(() => {
+    sinaEstimateInflight.delete(code);
+  });
+
+  sinaEstimateInflight.set(code, promise);
+  return promise;
+};
+
 export const fetchFundData = async (c) => {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     throw new Error('无浏览器环境');
@@ -325,6 +376,11 @@ export const fetchFundData = async (c) => {
   } catch (e) {
     clearCachedRequest(`fund_valuation_last_${code}`);
     return fetchFundDataFallback(code);
+  }
+
+  let fallbackEstimate = null;
+  if (valuation.GSZ == null || valuation.GSZZL == null) {
+    fallbackEstimate = await fetchSinaEstimate(code);
   }
 
   const holdingsResponse = await holdingsPromise;
@@ -394,18 +450,25 @@ export const fetchFundData = async (c) => {
     .startOf('month')
     .subtract(1, 'day')
     .format('YYYY-MM-DD');
-  const gsz = valuation.GSZ == null ? null : Number(valuation.GSZ);
-  const gszzl = valuation.GSZZL == null ? null : Number(valuation.GSZZL);
+  const rawGsz = valuation.GSZ == null ? fallbackEstimate?.gsz : valuation.GSZ;
+  const rawGszzl = valuation.GSZZL == null ? fallbackEstimate?.gszzl : valuation.GSZZL;
+  const gsz = rawGsz == null ? null : Number(rawGsz);
+  const gszzl = rawGszzl == null ? null : Number(rawGszzl);
 
   return {
     code,
     name: String(valuation.SHORTNAME || ''),
     dwjz: valuation.NAV == null ? null : String(valuation.NAV),
     gsz: Number.isFinite(gsz) ? gsz : null,
-    gztime: valuation.GZTIME ? String(valuation.GZTIME) : null,
+    gztime: valuation.GZTIME
+      ? String(valuation.GZTIME)
+      : (fallbackEstimate?.gztime || null),
     jzrq: valuation.PDATE ? String(valuation.PDATE) : null,
     gszzl: Number.isFinite(gszzl) ? gszzl : null,
     noValuation: !Number.isFinite(gsz) || !Number.isFinite(gszzl),
+    valuationSource: valuation.GSZ != null && valuation.GSZZL != null
+      ? 'tiantianfunds'
+      : (fallbackEstimate?.valuationSource || 'official_nav'),
     holdings,
     holdingsReportDate: stockRows.length ? previousQuarterEnd : null,
     holdingsIsLastQuarter: stockRows.length > 0
