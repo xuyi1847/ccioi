@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from app.api.quant_routes import router as quant_router
 from app.api.infra_routes import router as infra_router
 from app.database import init_database
+from app.local_storage import STORAGE_ROOT, init_local_storage
 
 app = FastAPI(
     title="Quant Asset Evaluator",
@@ -25,11 +27,22 @@ app.add_middleware(
 
 app.include_router(quant_router)
 app.include_router(infra_router)
+app.mount(
+    "/storage/uploads",
+    StaticFiles(directory=str(STORAGE_ROOT / "uploads"), check_dir=False),
+    name="storage-uploads",
+)
+app.mount(
+    "/storage/videos",
+    StaticFiles(directory=str(STORAGE_ROOT / "videos"), check_dir=False),
+    name="storage-videos",
+)
 
 
 @app.on_event("startup")
 def startup():
     init_database()
+    init_local_storage()
 
 @app.get("/health")
 def health():

@@ -45,6 +45,15 @@ from app.database import (
     save_user_config,
     verify_password,
 )
+from app.local_storage import (
+    cleanup_storage,
+    delete_history,
+    public_url as local_public_url,
+    read_user_history,
+    safe_id,
+    save_upload,
+    write_json,
+)
 
 # =========================================================
 # APP / ROUTER
@@ -287,27 +296,30 @@ async def ccioi_chat_compat(req: DeepSeekChatReq):
     return await ccioi_chat(req)
 
 # =========================================================
-# UPLOAD API (Frontend -> Server -> OSS)
+# UPLOAD API (Frontend -> local disk)
 # =========================================================
 @router.post("/upload")
-async def upload_to_oss(file: UploadFile = File(...)):
+async def upload_file(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_user_from_auth),
+):
     """
-    上传文件到 OSS
-    返回可公网访问的 URL
+    上传参考文件到服务器本机存储。
     """
     try:
-        active_bucket = _require_oss_bucket()
-        ext = os.path.splitext(file.filename or "")[1] or ""
+        ext = os.path.splitext(file.filename or "")[1].lower()
+        if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+            raise HTTPException(status_code=400, detail="Unsupported image type")
         object_key = f"uploads/{uuid.uuid4().hex}{ext}"
-
-        content = await file.read()
-        active_bucket.put_object(object_key, content)
-
+        await save_upload(file, object_key, 50 * 1024**2)
+        cleanup_storage()
         return {
             "status": "success",
             "object_key": object_key,
-            "public_url": _oss_public_url(object_key),
+            "public_url": local_public_url(object_key),
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -463,55 +475,33 @@ async def parse_holdings_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="持仓文件解析失败，请检查文件内容")
 
 # =========================================================
-# HISTORY APIs (JWT -> user_id -> list OSS meta)
+# HISTORY APIs (JWT -> user_id -> local metadata)
 # =========================================================
 @router.get("/history")
 async def get_history(user: dict = Depends(get_user_from_auth)):
     """
-    获取用户生成历史（从 OSS meta 目录读取）
-    目录约定：users/{user_id}/meta/{task_id}.json
+    获取用户生成历史。
     """
     user_id = user.get("sub")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token payload: missing sub")
 
-    prefix = f"users/{user_id}/meta/"
-    records = []
-
     try:
-        active_bucket = _require_oss_bucket()
-        for obj in oss2.ObjectIterator(active_bucket, prefix=prefix):
-            raw = active_bucket.get_object(obj.key).read()
-            try:
-                content = raw.decode("utf-8")
-                records.append(json.loads(content))
-            except Exception:
-                # 某个 meta 文件损坏不影响整体
-                continue
-
-        records.sort(key=lambda x: x.get("created_at", 0), reverse=True)
-        return records
+        return read_user_history(user_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/history/{task_id}")
 async def delete_history_item(task_id: str, user: dict = Depends(get_user_from_auth)):
     """
-    删除历史记录：
-    - 删除 meta: users/{user_id}/meta/{task_id}.json
-    - 不强制删除视频（因为你的视频目前在 videos/{task_id}.mp4，不在 users/{user_id}/videos/）
-      如需删视频，这里可以按 meta 里的 video_url 反推出 key 再删
+    删除历史记录及对应视频。
     """
     user_id = user.get("sub")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token payload: missing sub")
 
-    meta_key = f"users/{user_id}/meta/{task_id}.json"
-
     try:
-        active_bucket = _require_oss_bucket()
-        if active_bucket.object_exists(meta_key):
-            active_bucket.delete_object(meta_key)
+        delete_history(user_id, task_id)
         return {"status": "deleted", "task_id": task_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -838,7 +828,7 @@ async def optimize_prompt(
         raise HTTPException(status_code=500, detail=str(e))
 
 # =========================================================
-# GPU UPLOAD API (GPU -> Server -> OSS + META)
+# GPU UPLOAD API (GPU -> local disk + metadata)
 # =========================================================
 @router.post("/gpu/upload")
 async def gpu_upload(
@@ -850,35 +840,33 @@ async def gpu_upload(
     """
     GPU 生成完成后调用：
     - 上传视频
-    - 写 OSS
+    - 写本机磁盘
     - 写 meta
     """
     if not task_id or not user_id:
         raise HTTPException(status_code=400, detail="task_id and user_id required")
 
     try:
-        active_bucket = _require_oss_bucket()
+        task_id = safe_id(task_id, "task_id")
+        user_id = safe_id(user_id, "user_id")
         # ===== 1. 存视频 =====
         video_key = f"videos/{task_id}.mp4"
-        content = await file.read()
-        active_bucket.put_object(video_key, content)
-        public_url = _oss_public_url(video_key)
+        await save_upload(file, video_key, 4 * 1024**3)
+        public_url = local_public_url(video_key)
 
         # ===== 2. 写 meta =====
         meta_key = f"users/{user_id}/meta/{task_id}.json"
-        active_bucket.put_object(
+        write_json(
             meta_key,
-            json.dumps(
-                {
-                    "id": task_id,
-                    "user_id": user_id,
-                    "prompt": prompt,
-                    "video_url": public_url,
-                    "created_at": time.time(),
-                },
-                ensure_ascii=False,
-            ),
+            {
+                "id": task_id,
+                "user_id": user_id,
+                "prompt": prompt,
+                "video_url": public_url,
+                "created_at": time.time(),
+            },
         )
+        cleanup_storage()
 
         return {
             "status": "success",
@@ -886,6 +874,8 @@ async def gpu_upload(
             "public_url": public_url,
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         print("🔥 gpu_upload failed:", e)
         raise HTTPException(status_code=500, detail=str(e))
