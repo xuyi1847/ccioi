@@ -54,8 +54,6 @@ from app.database import (
     get_user_config,
     public_user,
     save_user_config,
-    save_geo_report,
-    list_geo_reports,
     verify_password,
 )
 from app.local_storage import (
