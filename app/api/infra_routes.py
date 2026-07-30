@@ -2,8 +2,13 @@
 import json
 import time
 import uuid
-from typing import Dict, Optional, Tuple, Any
+from typing import Dict, Optional, Tuple, Any, List
 from io import BytesIO
+from html.parser import HTMLParser
+import ipaddress
+import socket
+from urllib.parse import urljoin, urlparse
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 import json
 import time
@@ -12,12 +17,18 @@ import csv
 import asyncio
 import traceback
 import math
+import ipaddress
+import re
+import socket
+from html.parser import HTMLParser
+from urllib.parse import urljoin, urlparse
 from playwright.sync_api import sync_playwright
 from concurrent.futures import ThreadPoolExecutor
 import os
 import jwt
 import oss2
 import pandas as pd
+import requests
 
 from fastapi import (
     FastAPI,
@@ -43,6 +54,8 @@ from app.database import (
     get_user_config,
     public_user,
     save_user_config,
+    save_geo_report,
+    list_geo_reports,
     verify_password,
 )
 from app.local_storage import (
@@ -159,6 +172,24 @@ class LoginReq(BaseModel):
 class UserConfigReq(BaseModel):
     data: dict[str, Any]
     partial: bool = False
+
+
+class GeoAnalyzeReq(BaseModel):
+    target_url: str
+    brand: str
+    topics: list[str]
+    audience: str = ""
+    competitors: list[str] = []
+    platforms: list[str] = []
+    language: str = "zh-CN"
+
+
+class GeoAnalyzeReq(BaseModel):
+    url: str
+    brand: str
+    keywords: List[str] = []
+    audience: Optional[str] = None
+    language: str = "zh-CN"
 
 
 class DeepSeekChatReq(BaseModel):
@@ -294,6 +325,205 @@ async def ccioi_chat(req: DeepSeekChatReq):
 @router.post("/infra/chat")
 async def ccioi_chat_compat(req: DeepSeekChatReq):
     return await ccioi_chat(req)
+
+
+class _GeoHtmlParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.title = ""
+        self.meta = {}
+        self.headings = []
+        self.json_ld_count = 0
+        self.text = []
+        self._tag = ""
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        self._tag = tag
+        if tag in {"script", "style", "noscript"}:
+            self._skip_depth += 1
+        attributes = dict(attrs)
+        if tag == "meta":
+            name = (attributes.get("name") or attributes.get("property") or "").lower()
+            if name and attributes.get("content"):
+                self.meta[name] = attributes["content"].strip()
+        if tag == "script" and attributes.get("type", "").lower() == "application/ld+json":
+            self.json_ld_count += 1
+
+    def handle_endtag(self, tag):
+        if tag in {"script", "style", "noscript"} and self._skip_depth:
+            self._skip_depth -= 1
+        self._tag = ""
+
+    def handle_data(self, data):
+        value = " ".join(data.split())
+        if not value:
+            return
+        if self._tag == "title":
+            self.title += value
+        if self._tag in {"h1", "h2", "h3"}:
+            self.headings.append(value)
+        if not self._skip_depth:
+            self.text.append(value)
+
+
+def _validate_public_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("Only public HTTP/HTTPS URLs are supported")
+    for info in socket.getaddrinfo(parsed.hostname, parsed.port or 443):
+        address = ipaddress.ip_address(info[4][0])
+        if (
+            address.is_private
+            or address.is_loopback
+            or address.is_link_local
+            or address.is_reserved
+            or address.is_multicast
+        ):
+            raise ValueError("Private network URLs are not allowed")
+
+
+class _SafeRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        target = urljoin(req.full_url, newurl)
+        _validate_public_url(target)
+        return super().redirect_request(req, fp, code, msg, headers, target)
+
+
+def _fetch_geo_page(url: str) -> dict:
+    _validate_public_url(url)
+    request = Request(
+        url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (compatible; CCIOI-GEO-Audit/1.0; "
+                "+https://www.ccioi.com)"
+            ),
+            "Accept": "text/html,application/xhtml+xml",
+        },
+    )
+    opener = build_opener(_SafeRedirectHandler())
+    with opener.open(request, timeout=15) as response:
+        content_type = response.headers.get("Content-Type", "")
+        if "text/html" not in content_type:
+            raise ValueError("Target URL is not an HTML page")
+        raw = response.read(2 * 1024 * 1024 + 1)
+        if len(raw) > 2 * 1024 * 1024:
+            raise ValueError("Target page exceeds the 2MB analysis limit")
+        charset = response.headers.get_content_charset() or "utf-8"
+        html = raw.decode(charset, errors="replace")
+        final_url = response.geturl()
+
+    parser = _GeoHtmlParser()
+    parser.feed(html)
+    visible_text = " ".join(parser.text)
+    return {
+        "final_url": final_url,
+        "title": parser.title.strip(),
+        "description": parser.meta.get("description", ""),
+        "canonical": parser.meta.get("og:url", ""),
+        "headings": parser.headings[:40],
+        "json_ld_count": parser.json_ld_count,
+        "word_count": len(visible_text.split()),
+        "content": visible_text[:24000],
+    }
+
+
+def _parse_json_response(content: str) -> dict:
+    cleaned = content.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("\n", 1)[-1]
+        cleaned = cleaned.rsplit("```", 1)[0]
+    parsed = json.loads(cleaned)
+    if not isinstance(parsed, dict):
+        raise ValueError("Model returned an invalid GEO report")
+    return parsed
+
+
+@router.post("/geo/analyze")
+async def geo_analyze(req: GeoAnalyzeReq, auth: dict = Depends(get_user_from_auth)):
+    if not req.brand.strip():
+        raise HTTPException(status_code=400, detail="Brand or entity name is required")
+    try:
+        page = await asyncio.to_thread(_fetch_geo_page, req.url.strip())
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Unable to fetch target page: {exc}")
+
+    api_key = os.getenv("CCIOI_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="GEO analysis model is not configured")
+
+    prompt = {
+        "task": (
+            "Audit this page for Generative Engine Optimization (GEO). Evaluate whether "
+            "AI answer engines can understand, trust, quote and recommend the entity. "
+            "Return actionable findings grounded only in the supplied page."
+        ),
+        "brand": req.brand.strip(),
+        "keywords": [value.strip() for value in req.keywords if value.strip()][:20],
+        "audience": (req.audience or "").strip(),
+        "output_language": req.language,
+        "page": page,
+        "required_json_schema": {
+            "overall_score": "integer 0-100",
+            "summary": "string",
+            "scores": {
+                "entity_clarity": "integer 0-100",
+                "answerability": "integer 0-100",
+                "evidence": "integer 0-100",
+                "structure": "integer 0-100",
+                "trust": "integer 0-100",
+            },
+            "strengths": ["string"],
+            "issues": [
+                {
+                    "priority": "high|medium|low",
+                    "title": "string",
+                    "reason": "string",
+                    "fix": "string",
+                }
+            ],
+            "recommended_faqs": [
+                {"question": "string", "answer_outline": "string"}
+            ],
+            "content_brief": {
+                "suggested_title": "string",
+                "suggested_description": "string",
+                "sections": ["string"],
+                "schema_types": ["string"],
+            },
+            "citation_ready_passage": "string, 80-160 words",
+        },
+    }
+
+    try:
+        client = OpenAI(
+            api_key=api_key,
+            base_url=os.getenv("CCIOI_BASE_URL", "https://api.deepseek.com"),
+        )
+        response = await asyncio.to_thread(
+            client.chat.completions.create,
+            model=os.getenv("GEO_MODEL", "deepseek-chat"),
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a rigorous GEO auditor. Return JSON only, without markdown. "
+                        "Never invent citations, statistics, certifications or page content."
+                    ),
+                },
+                {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+        )
+        report = _parse_json_response(response.choices[0].message.content or "")
+        report["page"] = {key: value for key, value in page.items() if key != "content"}
+        return report
+    except Exception as exc:
+        print(f"🔥 /geo/analyze failed: {exc}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=502, detail="GEO analysis failed")
 
 # =========================================================
 # UPLOAD API (Frontend -> local disk)

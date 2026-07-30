@@ -1,279 +1,343 @@
-
-import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Zap, 
-  Terminal, 
-  ChevronDown, 
-  ChevronUp, 
-  Play, 
-  StopCircle, 
-  BarChart3, 
-  User as UserIcon, 
-  Lock, 
-  Link as LinkIcon, 
-  Tag, 
+import React, { useMemo, useState } from 'react';
+import {
+  AlertTriangle,
+  BarChart3,
+  Bot,
+  CheckCircle2,
+  FileText,
+  Globe2,
+  Lightbulb,
+  Link as LinkIcon,
   Loader2,
-  Table as TableIcon,
-  RefreshCw,
-  Activity,
-  Key
+  Quote,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Tag,
+  Target,
 } from 'lucide-react';
-import { useLanguage } from '../context/LanguageContext';
-import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { useNotification } from '../context/NotificationContext';
 
-interface PollutionLog {
-  stream: 'stdout' | 'stderr';
-  line: string;
+interface GeoIssue {
+  priority: 'high' | 'medium' | 'low';
+  title: string;
+  reason: string;
+  fix: string;
 }
 
-interface PerformanceMetric {
-  keyword: string;
-  hit: number;
-  ratio: number;
+interface GeoReport {
+  overall_score: number;
+  summary: string;
+  scores: Record<string, number>;
+  strengths: string[];
+  issues: GeoIssue[];
+  recommended_faqs: Array<{ question: string; answer_outline: string }>;
+  content_brief: {
+    suggested_title: string;
+    suggested_description: string;
+    sections: string[];
+    schema_types: string[];
+  };
+  citation_ready_passage: string;
+  page: {
+    final_url: string;
+    title: string;
+    description: string;
+    headings: string[];
+    json_ld_count: number;
+    word_count: number;
+  };
 }
+
+const scoreLabels: Record<string, string> = {
+  entity_clarity: '实体清晰度',
+  answerability: '问题可回答性',
+  evidence: '证据与可引用性',
+  structure: '内容结构',
+  trust: '可信度信号',
+};
+
+const priorityStyle = {
+  high: 'bg-red-500/10 text-red-400 border-red-500/20',
+  medium: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+  low: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
+};
+
+const clampScore = (score: number) => Math.max(0, Math.min(100, Number(score) || 0));
 
 const AmazonPollutionTool: React.FC = () => {
-  const { t } = useLanguage();
-  const { notify } = useNotification();
-  const { isConnected, isConnecting, connect, disconnect, sendCommand, lastMessage } = useSocket();
   const { user } = useAuth();
-
-  const [amazonUser, setAmazonUser] = useState('');
-  const [amazonPass, setAmazonPass] = useState('');
-  const [loginUrl, setLoginUrl] = useState('https://www.amazon.com/ap/signin');
-  const [productUrl, setProductUrl] = useState('');
+  const { language } = useLanguage();
+  const { notify } = useNotification();
+  const [url, setUrl] = useState('');
+  const [brand, setBrand] = useState('');
   const [keywords, setKeywords] = useState('');
-  const [otpRequired, setOtpRequired] = useState(false);
-  const [otpPrompt, setOtpPrompt] = useState('');
-  const [otpCode, setOtpCode] = useState('');
-  
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [logs, setLogs] = useState<PollutionLog[]>([]);
-  const [showConsole, setShowConsole] = useState(true);
-  const [performanceData, setPerformanceData] = useState<PerformanceMetric[] | null>(null);
-  const [isQuerying, setIsQuerying] = useState(false);
-  const [runs, setRuns] = useState<string[]>([]);
-  const [selectedRun, setSelectedRun] = useState<string>('');
-
-  const logEndRef = useRef<HTMLDivElement>(null);
+  const [audience, setAudience] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [report, setReport] = useState<GeoReport | null>(null);
+  const [error, setError] = useState('');
   const API_BASE = ((import.meta as any).env?.VITE_API_BASE || '/api').replace(/\/$/, '');
 
-  useEffect(() => {
-    if (logEndRef.current) logEndRef.current.scrollIntoView({ behavior: 'smooth' });
-  }, [logs]);
+  const keywordList = useMemo(
+    () => keywords.split(/[,，\n]+/).map((value) => value.trim()).filter(Boolean),
+    [keywords],
+  );
 
-  useEffect(() => {
-    if (lastMessage) {
-      try {
-        const data = JSON.parse(lastMessage);
-        if (data.type === 'TASK_LOG') {
-          setLogs(prev => [...prev, { stream: data.stream, line: data.line }]);
-        }
-        if (data.type === 'OTP_REQUIRED') {
-          setOtpRequired(true);
-          setOtpPrompt(data.prompt || 'OTP Required');
-          notify.warning("Amazon MFA verification requested.");
-        }
-        if (data.type === 'task_finished') {
-          setIsProcessing(false);
-          notify.success("Optimization task sequence completed.");
-          disconnect();
-          loadRuns();
-        }
-      } catch (e) {}
-    }
-  }, [lastMessage, disconnect, notify]);
-
-  const loadRuns = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/amazon/pollution/runs`);
-      if (!response.ok) return;
-      const data = await response.json();
-      setRuns(Array.isArray(data.runs) ? data.runs : []);
-    } catch {}
-  };
-
-  useEffect(() => { loadRuns(); }, []);
-
-  const handleStartTask = async () => {
+  const analyze = async () => {
     if (!user) {
-      notify.error(t('tool.chat.login_required'));
+      notify.error('请先登录后使用 GEO 分析');
       return;
     }
-    if (!amazonUser || !amazonPass || !loginUrl || !productUrl || !keywords) {
-      notify.warning("Incomplete parameters. All fields are required.");
+    if (!url.trim() || !brand.trim()) {
+      notify.warning('请填写目标页面和品牌/实体名称');
       return;
     }
-
-    setIsProcessing(true);
-    setLogs([]);
-
+    setIsAnalyzing(true);
+    setError('');
+    setReport(null);
     try {
-      if (!isConnected) await connect();
-      sendCommand({
-        task: 'AMAZON_POLLUTION',
-        parameters: {
-          username: amazonUser,
-          password: amazonPass,
-          login_url: loginUrl,
-          url: productUrl,
-          keywords: keywords.split(/[,，\n]+/).map(k => k.trim()).filter(k => k)
-        }
-      });
-      notify.info("Dispatching optimization task to cluster...");
-    } catch (err) {
-      notify.error("Bridge connection failed. Cluster unreachable.");
-      setIsProcessing(false);
-      disconnect();
-    }
-  };
-
-  const handleStopTask = () => {
-    setIsProcessing(false);
-    disconnect();
-    notify.info("Task terminated by supervisor.");
-  };
-
-  const handleSubmitOtp = () => {
-    if (!otpCode.trim()) return;
-    try {
-      sendCommand({ type: 'OTP_RESPONSE', otp: otpCode.trim() });
-      setOtpRequired(false);
-      setOtpPrompt('');
-      setOtpCode('');
-      notify.success("OTP Token transmitted.");
-    } catch (err) {
-      notify.error("Failed to transmit MFA token.");
-    }
-  };
-
-  const queryPerformance = async () => {
-    if (!user) return;
-    setIsQuerying(true);
-    try {
-      const response = await fetch(`${API_BASE}/amazon/pollution/effect`, {
+      const response = await fetch(`${API_BASE}/geo/analyze`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${user.token}`,
+        },
         body: JSON.stringify({
-          url: productUrl,
-          keywords: keywords.split(/[,，\n]+/).map(k => k.trim()).filter(k => k),
-          run_id: selectedRun || undefined
-        })
+          url: url.trim(),
+          brand: brand.trim(),
+          keywords: keywordList,
+          audience: audience.trim(),
+          language,
+        }),
       });
-      if (!response.ok) throw new Error();
       const data = await response.json();
-      setPerformanceData(data.keyword_stats || []);
-      notify.success("Performance metrics synchronized.");
-    } catch (err) {
-      notify.warning("Query server offline. Displaying simulation metrics.");
-      const mockData: PerformanceMetric[] = keywords.split(/[,，\n]+/).map(k => k.trim()).filter(k => k).map((k) => ({
-        keyword: k, hit: Math.floor(Math.random() * 6), ratio: Math.random()
-      }));
-      setPerformanceData(mockData);
-    } finally { setIsQuerying(false); }
+      if (!response.ok) throw new Error(data.detail || 'GEO 分析失败');
+      setReport(data);
+      notify.success('GEO 分析完成');
+    } catch (err: any) {
+      setError(err.message || 'GEO 分析失败');
+      notify.error(err.message || 'GEO 分析失败');
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-full gap-6 p-1 overflow-hidden flex-1 tracking-tight">
-      <div className="w-full lg:w-[380px] flex flex-col gap-4 overflow-y-auto custom-scrollbar lg:shrink-0">
-        <div className="bg-app-surface/60 p-6 rounded-3xl border border-app-border shadow-xl backdrop-blur-md">
-          <h2 className="text-lg font-bold flex items-center gap-2 text-amber-500 mb-6 uppercase tracking-wider">
-            <Zap className="w-5 h-5 fill-current" /> {t('tool.amazon.title')}
-          </h2>
-          <div className="space-y-5">
-            <div className="space-y-3">
-              <label className="text-[10px] font-bold text-app-subtext uppercase tracking-widest block">Authentication (Amazon)</label>
-              <div className="relative"><UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-app-subtext w-4 h-4" />
-                <input type="text" value={amazonUser} onChange={(e) => setAmazonUser(e.target.value)} placeholder={t('tool.amazon.username')} className="w-full bg-app-base border border-app-border rounded-xl py-2.5 pl-10 pr-4 text-app-text text-xs outline-none focus:border-amber-500 transition-colors" />
+    <div className="h-full overflow-y-auto custom-scrollbar p-1">
+      <div className="grid grid-cols-1 xl:grid-cols-[380px_minmax(0,1fr)] gap-6">
+        <section className="bg-app-surface/60 p-6 rounded-3xl border border-app-border shadow-xl backdrop-blur-md h-fit">
+          <div className="mb-6">
+            <h2 className="text-xl font-bold flex items-center gap-2 text-violet-400">
+              <Globe2 className="w-5 h-5" /> GEO 分析
+            </h2>
+            <p className="text-xs text-app-subtext mt-2 leading-relaxed">
+              检查页面是否容易被 ChatGPT、DeepSeek、Perplexity 等生成式搜索引擎理解、引用和推荐。
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <label className="block space-y-2">
+              <span className="text-[10px] font-bold text-app-subtext uppercase tracking-widest">目标页面 *</span>
+              <div className="relative">
+                <LinkIcon className="absolute left-3 top-3.5 w-4 h-4 text-app-subtext" />
+                <textarea
+                  value={url}
+                  onChange={(event) => setUrl(event.target.value)}
+                  placeholder="https://example.com/product"
+                  className="w-full h-20 bg-app-base border border-app-border rounded-xl py-3 pl-10 pr-3 text-xs text-app-text outline-none focus:border-violet-500 resize-none"
+                />
               </div>
-              <div className="relative"><Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-app-subtext w-4 h-4" />
-                <input type="password" value={amazonPass} onChange={(e) => setAmazonPass(e.target.value)} placeholder={t('tool.amazon.password')} className="w-full bg-app-base border border-app-border rounded-xl py-2.5 pl-10 pr-4 text-app-text text-xs outline-none focus:border-amber-500 transition-colors" />
+            </label>
+
+            <label className="block space-y-2">
+              <span className="text-[10px] font-bold text-app-subtext uppercase tracking-widest">品牌 / 产品 / 实体 *</span>
+              <div className="relative">
+                <Target className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-app-subtext" />
+                <input
+                  value={brand}
+                  onChange={(event) => setBrand(event.target.value)}
+                  placeholder="例如：CCIOI"
+                  className="w-full bg-app-base border border-app-border rounded-xl py-3 pl-10 pr-3 text-xs text-app-text outline-none focus:border-violet-500"
+                />
               </div>
-              <div className="relative"><Key className="absolute left-3 top-1/2 -translate-y-1/2 text-app-subtext w-4 h-4" />
-                <input type="text" value={loginUrl} onChange={(e) => setLoginUrl(e.target.value)} placeholder={t('tool.amazon.login_url')} className="w-full bg-app-base border border-app-border rounded-xl py-2.5 pl-10 pr-4 text-app-text text-xs outline-none focus:border-amber-500 transition-colors" />
+            </label>
+
+            <label className="block space-y-2">
+              <span className="text-[10px] font-bold text-app-subtext uppercase tracking-widest">目标问题 / 关键词</span>
+              <div className="relative">
+                <Tag className="absolute left-3 top-3.5 w-4 h-4 text-app-subtext" />
+                <textarea
+                  value={keywords}
+                  onChange={(event) => setKeywords(event.target.value)}
+                  placeholder="AI 视频生成，基金估值工具，生成式 AI 平台"
+                  className="w-full h-24 bg-app-base border border-app-border rounded-xl py-3 pl-10 pr-3 text-xs text-app-text outline-none focus:border-violet-500 resize-none"
+                />
               </div>
-            </div>
-            <div className="space-y-3">
-              <label className="text-[10px] font-bold text-app-subtext uppercase tracking-widest block">Targeting Details</label>
-              <div className="relative"><LinkIcon className="absolute left-3 top-3 text-app-subtext w-4 h-4" />
-                <textarea value={productUrl} onChange={(e) => setProductUrl(e.target.value)} placeholder={t('tool.amazon.url')} className="w-full bg-app-base border border-app-border rounded-xl py-2.5 pl-10 pr-4 text-app-text text-xs h-20 outline-none focus:border-amber-500 transition-colors resize-none" />
+            </label>
+
+            <label className="block space-y-2">
+              <span className="text-[10px] font-bold text-app-subtext uppercase tracking-widest">目标受众</span>
+              <div className="relative">
+                <Bot className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-app-subtext" />
+                <input
+                  value={audience}
+                  onChange={(event) => setAudience(event.target.value)}
+                  placeholder="例如：寻找 AI 工具的内容创作者"
+                  className="w-full bg-app-base border border-app-border rounded-xl py-3 pl-10 pr-3 text-xs text-app-text outline-none focus:border-violet-500"
+                />
               </div>
-              <div className="relative"><Tag className="absolute left-3 top-3 text-app-subtext w-4 h-4" />
-                <textarea value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder={t('tool.amazon.keywords') + " (Comma separated)"} className="w-full bg-app-base border border-app-border rounded-xl py-2.5 pl-10 pr-4 text-app-text text-xs h-20 outline-none focus:border-amber-500 transition-colors resize-none" />
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={isProcessing ? handleStopTask : handleStartTask} disabled={isConnecting} className={`flex-1 py-3.5 rounded-2xl font-bold uppercase tracking-widest text-[11px] shadow-lg flex items-center justify-center gap-2 transition-all ${isProcessing ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-amber-900/30'}`}>
-                {isConnecting ? <Loader2 className="animate-spin w-4 h-4" /> : isProcessing ? <StopCircle className="w-4 h-4" /> : <Play className="w-4 h-4 fill-current" />}
-                {isConnecting ? 'Connecting...' : isProcessing ? t('tool.amazon.stop') : t('tool.amazon.start')}
-              </button>
-              <button onClick={queryPerformance} disabled={isQuerying || keywords.length === 0} className="w-14 bg-app-surface-hover border border-app-border rounded-2xl flex items-center justify-center text-app-subtext hover:text-white transition-all disabled:opacity-20 shadow-lg">
-                {isQuerying ? <Loader2 className="animate-spin w-4 h-4" /> : <BarChart3 className="w-5 h-5" />}
-              </button>
-            </div>
-            {otpRequired && (
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 space-y-3 animate-fade-up">
-                <div className="text-[10px] uppercase tracking-widest text-amber-400 font-bold">OTP Required</div>
-                <div className="text-xs text-app-subtext">{otpPrompt}</div>
-                <div className="flex gap-2">
-                  <input type="text" value={otpCode} onChange={(e) => setOtpCode(e.target.value)} placeholder="6-digit code" className="flex-1 bg-app-base border border-app-border rounded-xl py-2 px-3 text-app-text text-xs outline-none focus:border-amber-500 transition-colors" />
-                  <button onClick={handleSubmitOtp} className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30">Submit</button>
-                </div>
+            </label>
+
+            <button
+              onClick={analyze}
+              disabled={isAnalyzing}
+              className="w-full py-3.5 rounded-2xl font-bold text-xs bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-900/30 flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+              {isAnalyzing ? '正在抓取并分析页面…' : '开始 GEO 分析'}
+            </button>
+
+            {error && (
+              <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-400">
+                {error}
               </div>
             )}
           </div>
-        </div>
-      </div>
-      <div className="flex-1 flex flex-col gap-6 min-h-0">
-        <div className="bg-black/80 rounded-3xl border border-app-border overflow-hidden flex flex-col flex-1 shadow-2xl">
-          <div className="bg-white/5 px-6 py-3.5 flex items-center justify-between border-b border-white/5">
-            <div className="flex items-center gap-3 text-[10px] font-bold text-amber-500 uppercase tracking-widest"><Terminal size={14} /> {t('tool.amazon.logs')}</div>
-            <div className="flex items-center gap-4">
-              <div className={`w-2 h-2 rounded-full ${isProcessing ? 'bg-green-500 animate-pulse' : 'bg-app-subtext/20'}`} />
-              <button onClick={() => setShowConsole(!showConsole)} className="text-app-subtext hover:text-white transition-colors">{showConsole ? <ChevronDown size={18} /> : <ChevronUp size={18} />}</button>
-            </div>
-          </div>
-          {showConsole && (
-            <div className="flex-1 overflow-y-auto p-6 font-mono text-[11px] leading-relaxed custom-scrollbar bg-black/40">
-              {logs.length === 0 ? <div className="h-full flex flex-col items-center justify-center text-app-subtext/30"><Activity size={32} className="mb-4 opacity-10" /><p className="uppercase tracking-tighter">System standby - Link IDLE</p></div> :
-                logs.map((log, i) => (
-                  <div key={i} className={`mb-1.5 break-all ${log.stream === 'stderr' ? 'text-rose-400' : 'text-amber-100/70'}`}>
-                    <span className="opacity-20 mr-3 text-[9px]">{new Date().toLocaleTimeString([], { hour12: false, minute:'2-digit', second:'2-digit' })}</span>
-                    <span className="opacity-40 mr-2">[{log.stream.toUpperCase()}]</span>{log.line}
-                  </div>
-                ))}
-              <div ref={logEndRef} />
-            </div>
-          )}
-        </div>
-        {performanceData && (
-          <div className="bg-app-surface/40 rounded-3xl border border-app-border p-6 animate-fade-up shrink-0 shadow-lg">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold text-app-text flex items-center gap-2"><TableIcon size={16} className="text-amber-500" /> Rufus SEO Metrics</h3>
-              <div className="flex items-center gap-3">
-                <select value={selectedRun} onChange={(e) => setSelectedRun(e.target.value)} className="bg-app-base border border-app-border rounded-lg px-2 py-1 text-[10px] text-app-text">
-                  <option value="">Latest Run</option>
-                  {runs.map((run) => <option key={run} value={run}>{run}</option>)}
-                </select>
-                <button onClick={queryPerformance} className="text-[10px] text-amber-500 font-bold uppercase hover:underline flex items-center gap-1"><RefreshCw size={10} /> Sync</button>
+        </section>
+
+        <section className="min-w-0 space-y-6">
+          {!report && !isAnalyzing && (
+            <div className="min-h-[520px] rounded-3xl border border-dashed border-app-border bg-app-surface/30 flex items-center justify-center text-center p-8">
+              <div className="max-w-md">
+                <Sparkles className="w-12 h-12 mx-auto text-violet-400/30 mb-4" />
+                <h3 className="text-app-text font-bold">让内容更容易进入 AI 答案</h3>
+                <p className="text-xs text-app-subtext mt-2 leading-relaxed">
+                  系统会分析实体定义、答案密度、事实证据、内容结构、可信度和结构化数据，并生成可直接执行的修改方案。
+                </p>
               </div>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="text-[10px] text-app-subtext uppercase tracking-wider font-bold"><tr className="border-b border-app-border"><th className="pb-3 pr-4">Keyword</th><th className="pb-3 pr-4">Hit Count</th><th className="pb-3">Hit Rate</th></tr></thead>
-                <tbody className="text-app-text">
-                  {performanceData.map((row, idx) => (
-                    <tr key={idx} className="border-b border-app-border/30 last:border-0 hover:bg-white/5 transition-colors">
-                      <td className="py-3.5 font-medium">{row.keyword}</td><td className="py-3.5 font-mono">{row.hit}</td><td className="py-3.5"><div className="flex items-center gap-2"><div className="w-16 h-1.5 bg-app-base rounded-full overflow-hidden"><div className="h-full bg-amber-500" style={{ width: `${Math.round(row.ratio * 100)}%` }} /></div>{(row.ratio * 100).toFixed(1)}%</div></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          )}
+
+          {isAnalyzing && (
+            <div className="min-h-[520px] rounded-3xl border border-app-border bg-app-surface/30 flex items-center justify-center">
+              <div className="text-center">
+                <Loader2 className="w-10 h-10 animate-spin text-violet-400 mx-auto" />
+                <p className="text-sm text-app-text mt-4">正在构建 GEO 报告</p>
+                <p className="text-xs text-app-subtext mt-1">抓取页面、识别实体、评估可引用性</p>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+
+          {report && (
+            <>
+              <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] gap-5">
+                <div className="rounded-3xl border border-app-border bg-app-surface/60 p-6 flex flex-col items-center justify-center">
+                  <div className="relative w-32 h-32 rounded-full flex items-center justify-center bg-app-base border-8 border-violet-500/20">
+                    <span className="text-4xl font-black text-violet-400">{clampScore(report.overall_score)}</span>
+                    <span className="absolute bottom-7 text-[9px] text-app-subtext">/ 100</span>
+                  </div>
+                  <div className="mt-4 text-sm font-bold text-app-text">GEO 综合评分</div>
+                </div>
+                <div className="rounded-3xl border border-app-border bg-app-surface/60 p-6">
+                  <h3 className="font-bold text-app-text flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-violet-400" /> 分项评分
+                  </h3>
+                  <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4 mt-5">
+                    {Object.entries(report.scores || {}).map(([key, value]) => (
+                      <div key={key}>
+                        <div className="flex justify-between text-xs mb-1.5">
+                          <span className="text-app-subtext">{scoreLabels[key] || key}</span>
+                          <span className="text-app-text font-mono">{clampScore(value)}</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-app-base overflow-hidden">
+                          <div className="h-full bg-gradient-to-r from-violet-600 to-indigo-400" style={{ width: `${clampScore(value)}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-app-subtext leading-relaxed mt-5">{report.summary}</p>
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-app-border bg-app-surface/60 p-6">
+                <h3 className="font-bold text-app-text flex items-center gap-2 mb-4">
+                  <AlertTriangle className="w-4 h-4 text-amber-400" /> 优先改进项
+                </h3>
+                <div className="space-y-3">
+                  {(report.issues || []).map((issue, index) => (
+                    <div key={index} className="rounded-2xl border border-app-border bg-app-base/50 p-4">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded-md border text-[9px] uppercase ${priorityStyle[issue.priority] || priorityStyle.medium}`}>
+                          {issue.priority}
+                        </span>
+                        <span className="text-sm font-bold text-app-text">{issue.title}</span>
+                      </div>
+                      <p className="text-xs text-app-subtext mt-2">{issue.reason}</p>
+                      <div className="mt-3 flex gap-2 text-xs text-violet-300">
+                        <Lightbulb className="w-4 h-4 shrink-0" /> {issue.fix}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                <div className="rounded-3xl border border-app-border bg-app-surface/60 p-6">
+                  <h3 className="font-bold text-app-text flex items-center gap-2 mb-4">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" /> 当前优势
+                  </h3>
+                  <ul className="space-y-3">
+                    {(report.strengths || []).map((item, index) => (
+                      <li key={index} className="text-xs text-app-subtext flex gap-2">
+                        <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" /> {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="rounded-3xl border border-app-border bg-app-surface/60 p-6">
+                  <h3 className="font-bold text-app-text flex items-center gap-2 mb-4">
+                    <FileText className="w-4 h-4 text-sky-400" /> 内容方案
+                  </h3>
+                  <div className="text-xs space-y-3">
+                    <div><span className="text-app-subtext">建议标题：</span><span className="text-app-text">{report.content_brief?.suggested_title}</span></div>
+                    <div><span className="text-app-subtext">建议描述：</span><span className="text-app-text">{report.content_brief?.suggested_description}</span></div>
+                    <div>
+                      <span className="text-app-subtext">结构化数据：</span>
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {(report.content_brief?.schema_types || []).map((item) => (
+                          <span key={item} className="px-2 py-1 rounded-md bg-sky-500/10 text-sky-300 border border-sky-500/20">{item}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-app-border bg-app-surface/60 p-6">
+                <h3 className="font-bold text-app-text flex items-center gap-2 mb-4">
+                  <Bot className="w-4 h-4 text-violet-400" /> 推荐 FAQ
+                </h3>
+                <div className="space-y-3">
+                  {(report.recommended_faqs || []).map((faq, index) => (
+                    <details key={index} className="group rounded-xl border border-app-border bg-app-base/40 p-4">
+                      <summary className="cursor-pointer text-sm font-medium text-app-text">{faq.question}</summary>
+                      <p className="text-xs text-app-subtext mt-3 leading-relaxed">{faq.answer_outline}</p>
+                    </details>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-violet-500/20 bg-violet-500/5 p-6">
+                <h3 className="font-bold text-app-text flex items-center gap-2 mb-3">
+                  <Quote className="w-4 h-4 text-violet-400" /> AI 易引用段落
+                </h3>
+                <p className="text-sm text-app-text/90 leading-7">{report.citation_ready_passage}</p>
+              </div>
+            </>
+          )}
+        </section>
       </div>
     </div>
   );
