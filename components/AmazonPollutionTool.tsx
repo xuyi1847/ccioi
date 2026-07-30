@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   BarChart3,
@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   FileText,
   Globe2,
+  History,
   Lightbulb,
   Link as LinkIcon,
   Loader2,
@@ -28,6 +29,7 @@ interface GeoIssue {
 }
 
 interface GeoReport {
+  report_id?: string;
   overall_score: number;
   summary: string;
   scores: Record<string, number>;
@@ -49,6 +51,14 @@ interface GeoReport {
     json_ld_count: number;
     word_count: number;
   };
+}
+
+interface SavedGeoReport {
+  id: string;
+  brand: string;
+  target_url: string;
+  result: GeoReport;
+  created_at: string;
 }
 
 const scoreLabels: Record<string, string> = {
@@ -77,6 +87,7 @@ const AmazonPollutionTool: React.FC = () => {
   const [audience, setAudience] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [report, setReport] = useState<GeoReport | null>(null);
+  const [savedReports, setSavedReports] = useState<SavedGeoReport[]>([]);
   const [error, setError] = useState('');
   const API_BASE = ((import.meta as any).env?.VITE_API_BASE || '/api').replace(/\/$/, '');
 
@@ -84,6 +95,22 @@ const AmazonPollutionTool: React.FC = () => {
     () => keywords.split(/[,，\n]+/).map((value) => value.trim()).filter(Boolean),
     [keywords],
   );
+
+  const loadReports = async () => {
+    if (!user?.token) return;
+    try {
+      const response = await fetch(`${API_BASE}/geo/reports?limit=20`, {
+        headers: { Authorization: `Bearer ${user.token}` },
+      });
+      if (!response.ok) return;
+      const data = await response.json();
+      setSavedReports(Array.isArray(data.reports) ? data.reports : []);
+    } catch {}
+  };
+
+  useEffect(() => {
+    loadReports();
+  }, [user?.id]);
 
   const analyze = async () => {
     if (!user) {
@@ -115,6 +142,7 @@ const AmazonPollutionTool: React.FC = () => {
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || 'GEO 分析失败');
       setReport(data);
+      loadReports();
       notify.success('GEO 分析完成');
     } catch (err: any) {
       setError(err.message || 'GEO 分析失败');
@@ -198,6 +226,32 @@ const AmazonPollutionTool: React.FC = () => {
               {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
               {isAnalyzing ? '正在抓取并分析页面…' : '开始 GEO 分析'}
             </button>
+
+            {savedReports.length > 0 && (
+              <div className="pt-2 border-t border-app-border">
+                <div className="flex items-center gap-2 text-[10px] font-bold text-app-subtext uppercase tracking-widest mb-2">
+                  <History className="w-3.5 h-3.5" /> 历史报告
+                </div>
+                <select
+                  defaultValue=""
+                  onChange={(event) => {
+                    const selected = savedReports.find((item) => item.id === event.target.value);
+                    if (!selected) return;
+                    setReport({ ...selected.result, report_id: selected.id });
+                    setBrand(selected.brand);
+                    setUrl(selected.target_url);
+                  }}
+                  className="w-full bg-app-base border border-app-border rounded-xl py-2.5 px-3 text-xs text-app-text outline-none focus:border-violet-500"
+                >
+                  <option value="">选择已保存的 GEO 报告</option>
+                  {savedReports.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.brand} · {new Date(item.created_at).toLocaleString()}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {error && (
               <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-400">

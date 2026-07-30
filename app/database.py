@@ -65,7 +65,19 @@ def init_database() -> None:
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """,
+        """
+        CREATE TABLE IF NOT EXISTS geo_reports (
+            id UUID PRIMARY KEY,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            target_url TEXT NOT NULL,
+            brand TEXT NOT NULL,
+            input_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+            result JSONB NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
         "CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users (LOWER(email))",
+        "CREATE INDEX IF NOT EXISTS idx_geo_reports_user_created ON geo_reports (user_id, created_at DESC)",
     )
     with connection() as conn:
         with conn.cursor() as cursor:
@@ -204,3 +216,63 @@ def save_user_config(user_id: str, data: dict[str, Any], partial: bool = False) 
                 )
             row = cursor.fetchone()
             return {"data": row["data"], "updated_at": row["updated_at"].isoformat()}
+
+
+def save_geo_report(
+    report_id: str,
+    user_id: str,
+    target_url: str,
+    brand: str,
+    input_data: dict[str, Any],
+    result: dict[str, Any],
+) -> dict:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO geo_reports (id, user_id, target_url, brand, input_data, result)
+                VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb)
+                RETURNING id, target_url, brand, result, created_at
+                """,
+                (
+                    report_id,
+                    user_id,
+                    target_url,
+                    brand,
+                    json.dumps(input_data, ensure_ascii=False),
+                    json.dumps(result, ensure_ascii=False),
+                ),
+            )
+            row = cursor.fetchone()
+            return {
+                "id": str(row["id"]),
+                "target_url": row["target_url"],
+                "brand": row["brand"],
+                "result": row["result"],
+                "created_at": row["created_at"].isoformat(),
+            }
+
+
+def list_geo_reports(user_id: str, limit: int = 20) -> list[dict]:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, target_url, brand, result, created_at
+                FROM geo_reports
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                LIMIT %s
+                """,
+                (user_id, max(1, min(limit, 100))),
+            )
+            return [
+                {
+                    "id": str(row["id"]),
+                    "target_url": row["target_url"],
+                    "brand": row["brand"],
+                    "result": row["result"],
+                    "created_at": row["created_at"].isoformat(),
+                }
+                for row in cursor.fetchall()
+            ]

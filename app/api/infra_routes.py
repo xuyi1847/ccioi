@@ -17,18 +17,12 @@ import csv
 import asyncio
 import traceback
 import math
-import ipaddress
-import re
-import socket
-from html.parser import HTMLParser
-from urllib.parse import urljoin, urlparse
 from playwright.sync_api import sync_playwright
 from concurrent.futures import ThreadPoolExecutor
 import os
 import jwt
 import oss2
 import pandas as pd
-import requests
 
 from fastapi import (
     FastAPI,
@@ -53,6 +47,8 @@ from app.database import (
     get_user_by_id,
     get_user_config,
     public_user,
+    list_geo_reports,
+    save_geo_report,
     save_user_config,
     verify_password,
 )
@@ -170,16 +166,6 @@ class LoginReq(BaseModel):
 class UserConfigReq(BaseModel):
     data: dict[str, Any]
     partial: bool = False
-
-
-class GeoAnalyzeReq(BaseModel):
-    target_url: str
-    brand: str
-    topics: list[str]
-    audience: str = ""
-    competitors: list[str] = []
-    platforms: list[str] = []
-    language: str = "zh-CN"
 
 
 class GeoAnalyzeReq(BaseModel):
@@ -517,11 +503,26 @@ async def geo_analyze(req: GeoAnalyzeReq, auth: dict = Depends(get_user_from_aut
         )
         report = _parse_json_response(response.choices[0].message.content or "")
         report["page"] = {key: value for key, value in page.items() if key != "content"}
+        report_id = str(uuid.uuid4())
+        save_geo_report(
+            report_id,
+            auth["sub"],
+            page["final_url"],
+            req.brand.strip(),
+            req.model_dump(),
+            report,
+        )
+        report["report_id"] = report_id
         return report
     except Exception as exc:
         print(f"🔥 /geo/analyze failed: {exc}")
         print(traceback.format_exc())
         raise HTTPException(status_code=502, detail="GEO analysis failed")
+
+
+@router.get("/geo/reports")
+async def geo_report_history(auth: dict = Depends(get_user_from_auth), limit: int = 20):
+    return {"reports": list_geo_reports(auth["sub"], limit)}
 
 # =========================================================
 # UPLOAD API (Frontend -> local disk)
