@@ -39,6 +39,8 @@ The server dispatches a model-independent payload:
 
 For LTX image-to-video tasks, `image_url`, `image_frame`, and
 `image_strength` are included. These fields are omitted for text-to-video.
+The dispatcher converts local `/api/storage/...` paths to an absolute
+`https://www.ccioi.com/api/storage/...` URL before sending them to the Worker.
 
 The Worker owns model paths and translates these fields into its local command:
 

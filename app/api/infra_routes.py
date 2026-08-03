@@ -85,6 +85,7 @@ agent_ws_global = None
 JWT_SECRET = os.getenv("JWT_SECRET", "ccioi-dev-secret")
 JWT_ALGO = "HS256"
 JWT_EXPIRE_SECONDS = 60 * 60 * 24 * 7  # 7 天
+PUBLIC_ORIGIN = os.getenv("PUBLIC_ORIGIN", "https://www.ccioi.com").rstrip("/")
 
 def create_jwt(user: dict) -> str:
     payload = {
@@ -1216,8 +1217,19 @@ async def frontend_ws(ws: WebSocket):
             # LTX 图生视频字段为可选；没有 image_url 时仍按文生视频执行。
             image_url = parameters.get("image_url")
             if model == "ltx-2.3" and image_url:
+                image_url = str(image_url).strip()
+                if image_url.startswith("/"):
+                    image_url = f"{PUBLIC_ORIGIN}{image_url}"
+                if not image_url.startswith("https://"):
+                    await ws.send_text(json.dumps({"type": "TASK_REJECTED", "message": "LTX image_url must use https"}))
+                    gpu["status"] = "idle"
+                    gpu["current_task"] = None
+                    task_frontend_map.pop(task_id, None)
+                    task_gpu_map.pop(task_id, None)
+                    task_ctx_map.pop(task_id, None)
+                    continue
                 worker_payload.update({
-                    "image_url": str(image_url),
+                    "image_url": image_url,
                     "image_frame": max(0, int(parameters.get("image_frame") or 0)),
                     "image_strength": min(1.0, max(0.0, float(parameters.get("image_strength", 0.8)))),
                 })
