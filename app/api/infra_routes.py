@@ -778,11 +778,41 @@ def build_torchrun_command(payload: dict,taskid: str) -> str:
         cmd.extend(["--cond_type", p.get("cond") or "i2v_head", "--ref", p["ref_image"]])
     return " ".join(cmd)
 
-def select_idle_gpu() -> Tuple[Optional[str], Optional[dict]]:
+GPU_HEARTBEAT_TIMEOUT = 20
+
+
+def _gpu_is_online(info: dict) -> bool:
+    return time.time() - info.get("last_heartbeat", 0) <= GPU_HEARTBEAT_TIMEOUT
+
+
+def select_idle_gpu(preferred_gpu_id: Optional[str] = None) -> Tuple[Optional[str], Optional[dict]]:
+    if preferred_gpu_id:
+        info = gpu_registry.get(preferred_gpu_id)
+        if info and info["status"] == "idle" and _gpu_is_online(info):
+            return preferred_gpu_id, info
+        return None, None
     for gpu_id, info in gpu_registry.items():
-        if info["status"] == "idle":
+        if info["status"] == "idle" and _gpu_is_online(info):
             return gpu_id, info
     return None, None
+
+
+@router.get("/gpus")
+async def list_gpus(auth: dict = Depends(get_user_from_auth)):
+    now = time.time()
+    return {
+        "gpus": [
+            {
+                "id": gpu_id,
+                "name": info.get("name") or gpu_id,
+                "status": info["status"] if _gpu_is_online(info) else "offline",
+                "current_task": info.get("current_task"),
+                "last_seen_seconds": max(0, round(now - info.get("last_heartbeat", now), 1)),
+                "metadata": info.get("metadata") or {},
+            }
+            for gpu_id, info in sorted(gpu_registry.items())
+        ]
+    }
 
 @router.websocket("/ws/gpu")
 async def gpu_ws(ws: WebSocket):
@@ -795,13 +825,25 @@ async def gpu_ws(ws: WebSocket):
         await ws.close(code=1008)
         return
 
-    gpu_id = register_msg.get("gpu_id")
-    if not gpu_id:
+    requested_gpu_id = str(register_msg.get("gpu_id") or "").strip()
+    if not requested_gpu_id:
         await ws.close(code=1008)
         return
 
+    # 多台客户端沿用默认 gpu-01 时不能互相覆盖，自动分配本次连接的唯一节点 ID。
+    gpu_id = requested_gpu_id
+    suffix = 2
+    while gpu_id in gpu_registry and _gpu_is_online(gpu_registry[gpu_id]):
+        gpu_id = f"{requested_gpu_id}-{suffix}"
+        suffix += 1
+
     gpu_registry[gpu_id] = {
         "ws": ws,
+        "name": register_msg.get("name") or requested_gpu_id,
+        "metadata": {
+            key: value for key, value in register_msg.items()
+            if key not in {"type", "gpu_id", "name"} and isinstance(value, (str, int, float, bool))
+        },
         "status": "idle",
         "last_heartbeat": time.time(),
         "current_task": None,
@@ -942,10 +984,19 @@ async def frontend_ws(ws: WebSocket):
                 await ws.send_text(json.dumps({"type": "IGNORED", "message": "Unsupported message type"}))
                 continue
 
-            # 调度 GPU
-            gpu_id, gpu = select_idle_gpu()
+            # 调度 GPU：前端可指定 preferred_gpu_id，为空时保持自动调度。
+            preferred_gpu_id = data.get("preferred_gpu_id")
+            gpu_id, gpu = select_idle_gpu(preferred_gpu_id)
             if not gpu:
-                await ws.send_text(json.dumps({"type": "TASK_REJECTED", "message": "No idle GPU available"}))
+                message = (
+                    f"GPU {preferred_gpu_id} is busy or offline"
+                    if preferred_gpu_id else "No idle GPU available"
+                )
+                await ws.send_text(json.dumps({
+                    "type": "TASK_REJECTED",
+                    "message": message,
+                    "gpu_id": preferred_gpu_id,
+                }))
                 continue
 
             # 构建任务

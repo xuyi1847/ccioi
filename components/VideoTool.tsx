@@ -21,6 +21,14 @@ const CONFIG_FILES = [
 const COND_TYPES = ['None', 'i2v_head', 'i2v_tail', 'i2v_loop'];
 
 interface TaskLog { stream: 'stdout' | 'stderr'; line: string; }
+interface GpuNode {
+  id: string;
+  name: string;
+  status: 'idle' | 'busy' | 'offline';
+  current_task?: string | null;
+  last_seen_seconds: number;
+  metadata?: Record<string, string | number | boolean>;
+}
 
 const VideoTool: React.FC = () => {
   const { t } = useLanguage();
@@ -46,6 +54,11 @@ const VideoTool: React.FC = () => {
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
   const [logs, setLogs] = useState<TaskLog[]>([]);
   const [showConsole, setShowConsole] = useState(true);
+  const [gpuNodes, setGpuNodes] = useState<GpuNode[]>([]);
+  const [selectedGpuId, setSelectedGpuId] = useState('');
+  const [isLoadingGpus, setIsLoadingGpus] = useState(false);
+  const [activeGpuId, setActiveGpuId] = useState('');
+  const API_BASE = ((import.meta as any).env?.VITE_API_BASE || '/api').replace(/\/$/, '');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -60,11 +73,49 @@ const VideoTool: React.FC = () => {
   }, [refImage]);
 
   useEffect(() => {
+    if (!user?.token) {
+      setGpuNodes([]);
+      return;
+    }
+    let cancelled = false;
+    const loadGpus = async (showLoading = false) => {
+      if (showLoading) setIsLoadingGpus(true);
+      try {
+        const response = await fetch(`${API_BASE}/gpus`, {
+          headers: { Authorization: `Bearer ${user.token}` },
+        });
+        if (!response.ok) throw new Error('GPU list unavailable');
+        const data = await response.json();
+        if (!cancelled) setGpuNodes(Array.isArray(data.gpus) ? data.gpus : []);
+      } catch {
+        if (!cancelled) setGpuNodes([]);
+      } finally {
+        if (!cancelled) setIsLoadingGpus(false);
+      }
+    };
+    loadGpus(true);
+    const timer = window.setInterval(() => loadGpus(false), 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [user?.token, API_BASE]);
+
+  useEffect(() => {
     if (lastMessage) {
       try {
         const data = JSON.parse(lastMessage);
         if (data.type === 'TASK_LOG') {
           setLogs(prev => [...prev, { stream: data.stream, line: data.line }]);
+        }
+        if (data.type === 'TASK_ACCEPTED') {
+          setActiveGpuId(data.gpu_id || '');
+          notify.info(`Task assigned to ${data.gpu_id || 'GPU'}.`);
+        }
+        if (data.type === 'TASK_REJECTED') {
+          setIsGenerating(false);
+          notify.error(data.message || 'Selected GPU is unavailable.');
+          disconnect();
         }
         if (data.type === 'task_finished') {
           if (data.status === 'success' && data.output?.public_url) {
@@ -132,6 +183,7 @@ const VideoTool: React.FC = () => {
       if (!isConnected) await connect();
       sendCommand({
         type: 'TASK_EXECUTION', task: 'VIDEO_GENERATION', token: user.token, timestamp: new Date().toISOString(),
+        preferred_gpu_id: selectedGpuId || undefined,
         parameters: { prompt: prompt.replace(/"/g, '\\"'), config: configFile, cond: condType, steps: numSteps, frames: numFrames, ratio: aspectRatio, fps, nproc_per_node: nprocPerNode, motion_score: motionScore, ref_image: refImageUrl }
       });
       notify.info("Task dispatched to CCIOI Cluster.");
@@ -155,6 +207,31 @@ const VideoTool: React.FC = () => {
           <div className="space-y-4">
             <div className="bg-app-base/50 p-2.5 rounded-xl border border-app-border"><label className="text-[9px] text-app-subtext uppercase font-bold block mb-1">Runner URL</label>
               <div className="flex gap-2"><input type="text" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} className="flex-1 bg-transparent text-[10px] text-app-text outline-none" placeholder="ws://..." /><Link size={10} className="text-app-subtext" /></div>
+            </div>
+            <div className="bg-app-base/50 p-2.5 rounded-xl border border-app-border">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[9px] text-app-subtext uppercase font-bold">GPU Node</label>
+                <span className="text-[8px] text-app-subtext">{gpuNodes.filter((node) => node.status === 'idle').length} idle / {gpuNodes.length} online</span>
+              </div>
+              <select
+                value={selectedGpuId}
+                onChange={(event) => setSelectedGpuId(event.target.value)}
+                disabled={isGenerating || isLoadingGpus}
+                className="w-full bg-app-surface border border-app-border rounded-lg p-2 text-[10px] text-app-text outline-none focus:border-cyan-500 disabled:opacity-50"
+              >
+                <option value="">Auto select an idle GPU</option>
+                {gpuNodes.map((node) => (
+                  <option key={node.id} value={node.id} disabled={node.status !== 'idle'}>
+                    {node.name === node.id ? node.id : `${node.name} (${node.id})`} · {node.status.toUpperCase()}
+                  </option>
+                ))}
+              </select>
+              {selectedGpuId && (
+                <div className="mt-1.5 text-[8px] text-cyan-400 flex items-center gap-1">
+                  <span className={`w-1.5 h-1.5 rounded-full ${gpuNodes.find((node) => node.id === selectedGpuId)?.status === 'idle' ? 'bg-green-400' : 'bg-amber-400'}`} />
+                  Selected: {selectedGpuId}
+                </div>
+              )}
             </div>
             <div><div className="flex items-center justify-between mb-1.5"><label className="block text-[10px] font-bold text-app-subtext uppercase tracking-widest">{t('tool.video.prompt')}</label>
                 <button onClick={handleOptimize} disabled={!prompt.trim() || isOptimizing} className="flex items-center gap-1.5 text-[9px] font-bold text-cyan-400 hover:text-white disabled:opacity-30 uppercase">{isOptimizing ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}Optimize</button>
@@ -197,7 +274,7 @@ const VideoTool: React.FC = () => {
             <div className="absolute inset-0 z-[60] bg-app-base/95 backdrop-blur-md flex flex-col animate-fade-in">
               <div className="p-8 flex flex-col items-center justify-center gap-4 text-center shrink-0">
                 <div className="relative"><div className="w-16 h-16 border-4 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin" /><Video className="absolute inset-0 m-auto text-cyan-400 animate-pulse" size={24} /></div>
-                <div className="space-y-1"><h3 className="text-xl font-bold text-app-text">{isConnecting ? 'Establishing Bridge' : 'Generating Sequence'}</h3><p className="text-app-subtext text-[10px] uppercase tracking-widest opacity-60">Node: CLUSTER_EDGE_PRO</p></div>
+                <div className="space-y-1"><h3 className="text-xl font-bold text-app-text">{isConnecting ? 'Establishing Bridge' : 'Generating Sequence'}</h3><p className="text-app-subtext text-[10px] uppercase tracking-widest opacity-60">Node: {activeGpuId || selectedGpuId || 'AUTO'}</p></div>
               </div>
               <div className="flex-1 px-6 pb-6 flex flex-col overflow-hidden">
                  <div className="bg-black/60 border border-white/10 rounded-2xl overflow-hidden flex flex-col h-full shadow-2xl">
