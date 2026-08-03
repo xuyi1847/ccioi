@@ -72,6 +72,13 @@ def init_database() -> None:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS system_settings (
+            key TEXT PRIMARY KEY,
+            value JSONB NOT NULL DEFAULT '{}'::jsonb,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS invite_codes (
             code TEXT PRIMARY KEY,
             active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -230,6 +237,26 @@ def get_user_by_email(email: str) -> Optional[dict]:
         with conn.cursor() as cursor:
             cursor.execute("SELECT * FROM users WHERE LOWER(email) = LOWER(%s)", (email,))
             return cursor.fetchone()
+
+
+def get_system_setting(key: str, default: Any = None) -> Any:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT value FROM system_settings WHERE key = %s", (key,))
+            row = cursor.fetchone()
+            return row["value"] if row else default
+
+
+def set_system_setting(key: str, value: Any) -> None:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO system_settings (key, value) VALUES (%s, %s::jsonb)
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+                """,
+                (key, json.dumps(value, ensure_ascii=False)),
+            )
 
 
 def get_user_by_id(user_id: str) -> Optional[dict]:

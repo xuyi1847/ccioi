@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, Calendar, Download, ExternalLink, History, Loader2, Lock, Play, RefreshCcw, ShieldCheck, Trash2, Video, X } from 'lucide-react';
+import { Activity, Calendar, Download, ExternalLink, History, Loader2, Lock, Play, RefreshCcw, ShieldCheck, Star, Trash2, Video, X } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
@@ -33,6 +33,8 @@ const HistoryTool: React.FC = () => {
   const [brokenVideos, setBrokenVideos] = useState<Record<string, boolean>>({});
   const [view, setView] = useState<'mine' | 'all' | 'operations'>('mine');
   const [operations, setOperations] = useState<OperationRecord[]>([]);
+  const [showcaseIds, setShowcaseIds] = useState<string[]>([]);
+  const [showcaseUpdating, setShowcaseUpdating] = useState('');
   const isAdmin = user?.role === 'super_admin';
 
   useEffect(() => {
@@ -60,6 +62,10 @@ const HistoryTool: React.FC = () => {
       const data = view === 'all' && isAdmin
         ? await mockBackend.getAdminHistory(user.token)
         : await mockBackend.getHistory(user.token);
+      if (view === 'all' && isAdmin) {
+        const showcase = await mockBackend.getShowcase();
+        setShowcaseIds(showcase.map((item: any) => String(item.id)));
+      }
       const mappedData: HistoryRecord[] = (data as any[])
         .map((item) => ({
           id: String(item.id || ''),
@@ -80,6 +86,21 @@ const HistoryTool: React.FC = () => {
       notify.error('加载历史记录失败');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const toggleShowcase = async (item: HistoryRecord) => {
+    if (!user || !isAdmin) return;
+    const featured = !showcaseIds.includes(item.id);
+    setShowcaseUpdating(item.id);
+    try {
+      await mockBackend.setShowcaseItem(user.token, item.id, featured);
+      setShowcaseIds((current) => featured ? [...current, item.id] : current.filter((id) => id !== item.id));
+      notify.success(featured ? '已加入首页展示' : '已取消首页展示');
+    } catch (error: any) {
+      notify.error(error.message || '首页展示更新失败');
+    } finally {
+      setShowcaseUpdating('');
     }
   };
 
@@ -180,9 +201,10 @@ const HistoryTool: React.FC = () => {
                     <span className="flex items-center gap-1 truncate"><Calendar size={11} />{formatDate(item.timestamp)}</span>
                     <span className="text-app-accent font-bold uppercase shrink-0">{item.type}</span>
                   </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className={`mt-3 grid ${view === 'all' ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
                     <button onClick={() => setPlayingItem(item)} className="py-2 bg-app-accent hover:bg-app-accent-hover rounded-lg text-[11px] font-bold text-white flex items-center justify-center gap-1.5"><Play size={12} />播放</button>
                     <a href={item.url} download className="py-2 bg-app-base hover:bg-app-surface-hover border border-app-border rounded-lg text-[11px] font-bold text-app-text flex items-center justify-center gap-1.5"><Download size={12} />下载</a>
+                    {view === 'all' && <button onClick={() => toggleShowcase(item)} disabled={showcaseUpdating === item.id} className={`py-2 border rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 ${showcaseIds.includes(item.id) ? 'border-amber-400/50 bg-amber-500/10 text-amber-400' : 'border-app-border bg-app-base text-app-subtext hover:text-app-text'}`}><Star size={12} fill={showcaseIds.includes(item.id) ? 'currentColor' : 'none'} />{showcaseUpdating === item.id ? '更新中' : showcaseIds.includes(item.id) ? '取消首页' : '首页展示'}</button>}
                   </div>
                 </div>
               </article>

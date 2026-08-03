@@ -112,6 +112,24 @@ export const mockBackend = {
     return await response.json();
   },
 
+  async getShowcase(): Promise<any[]> {
+    const response = await fetch(`${API_BASE}/showcase`);
+    if (!response.ok) throw new Error('Failed to fetch homepage showcase');
+    return await response.json();
+  },
+
+  async setShowcaseItem(token: string, taskId: string, featured: boolean): Promise<void> {
+    const response = await fetch(`${API_BASE}/admin/showcase/${taskId}`, {
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ featured })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to update homepage showcase');
+    }
+  },
+
   async getAdminOperations(token: string): Promise<any[]> {
     const response = await fetch(`${API_BASE}/admin/operations?limit=500`, {
       headers: { 'Authorization': `Bearer ${token}` }

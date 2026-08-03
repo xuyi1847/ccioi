@@ -47,6 +47,7 @@ from app.database import (
     get_user_by_email,
     get_user_by_id,
     get_user_config,
+    get_system_setting,
     list_operation_logs,
     list_users,
     log_operation,
@@ -56,6 +57,7 @@ from app.database import (
     save_user_config,
     set_user_enabled,
     set_user_module_permissions,
+    set_system_setting,
     verify_password,
 )
 from app.local_storage import (
@@ -187,6 +189,10 @@ class UserStatusReq(BaseModel):
 
 class UserPermissionsReq(BaseModel):
     permissions: dict[str, bool]
+
+
+class ShowcaseReq(BaseModel):
+    featured: bool
 
 
 class UserConfigReq(BaseModel):
@@ -757,6 +763,29 @@ async def admin_history(admin: dict = Depends(require_super_admin)):
          "user_name": users.get(item.get("user_id"), {}).get("name")}
         for item in read_all_history()
     ]
+
+
+@router.get("/showcase")
+async def homepage_showcase():
+    selected_ids = get_system_setting("homepage_showcase", []) or []
+    records = {str(item.get("id")): item for item in read_all_history() if item.get("id")}
+    return [records[task_id] for task_id in selected_ids if task_id in records]
+
+
+@router.put("/admin/showcase/{task_id}")
+async def update_homepage_showcase(task_id: str, req: ShowcaseReq, admin: dict = Depends(require_super_admin)):
+    available = {str(item.get("id")) for item in read_all_history() if item.get("id")}
+    if task_id not in available:
+        raise HTTPException(status_code=404, detail="Generation record not found")
+    selected_ids = [str(item) for item in (get_system_setting("homepage_showcase", []) or [])]
+    if req.featured and task_id not in selected_ids:
+        if len(selected_ids) >= 8:
+            raise HTTPException(status_code=400, detail="Homepage supports up to 8 videos")
+        selected_ids.append(task_id)
+    if not req.featured:
+        selected_ids = [item for item in selected_ids if item != task_id]
+    set_system_setting("homepage_showcase", selected_ids)
+    return {"task_ids": selected_ids}
 
 
 @router.get("/admin/operations")
