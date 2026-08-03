@@ -120,6 +120,34 @@ export const mockBackend = {
     return await response.json();
   },
 
+  async getAdminUsers(token: string): Promise<any[]> {
+    const response = await fetch(`${API_BASE}/admin/users`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error('Failed to fetch users');
+    return await response.json();
+  },
+
+  async setAdminUserEnabled(token: string, userId: string, enabled: boolean): Promise<void> {
+    const response = await fetch(`${API_BASE}/admin/users/${userId}/status`, {
+      method: 'PATCH',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to update user');
+    }
+  },
+
+  async getAdminUserOperations(token: string, userId: string): Promise<any[]> {
+    const response = await fetch(`${API_BASE}/admin/users/${userId}/operations?limit=500`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error('Failed to fetch user operations');
+    return await response.json();
+  },
+
   async deleteHistoryItem(token: string, id: string): Promise<void> {
     const response = await fetch(`${API_BASE}/history/${id}`, {
       method: 'DELETE',

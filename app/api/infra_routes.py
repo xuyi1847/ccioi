@@ -54,6 +54,7 @@ from app.database import (
     list_geo_reports,
     save_geo_report,
     save_user_config,
+    set_user_enabled,
     verify_password,
 )
 from app.local_storage import (
@@ -104,7 +105,11 @@ def get_user_from_auth(authorization: str = Header(...)) -> dict:
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid auth header")
     token = authorization.replace("Bearer ", "").strip()
-    return parse_jwt(token)
+    auth = parse_jwt(token)
+    user = get_user_by_id(auth.get("sub", ""))
+    if not user or not user.get("enabled", True):
+        raise HTTPException(status_code=403, detail="Account is disabled")
+    return auth
 
 
 def require_super_admin(auth: dict = Depends(get_user_from_auth)) -> dict:
@@ -175,6 +180,10 @@ class LoginReq(BaseModel):
     password: str
 
 
+class UserStatusReq(BaseModel):
+    enabled: bool
+
+
 class UserConfigReq(BaseModel):
     data: dict[str, Any]
     partial: bool = False
@@ -225,6 +234,8 @@ async def login(req: LoginReq):
     user = get_user_by_email(email)
     if not user or not verify_password(req.password, user["password_hash"], user["password_salt"]):
         raise HTTPException(status_code=401, detail="Email or password is incorrect")
+    if not user.get("enabled", True):
+        raise HTTPException(status_code=403, detail="Account is disabled")
     token = create_jwt(user)
     return {"user": public_user(user), "token": token}
 
@@ -747,6 +758,36 @@ async def admin_history(admin: dict = Depends(require_super_admin)):
 async def admin_operations(limit: int = 500, admin: dict = Depends(require_super_admin)):
     return list_operation_logs(limit)
 
+
+@router.get("/admin/users")
+async def admin_users(admin: dict = Depends(require_super_admin)):
+    history_counts: dict[str, int] = {}
+    for item in read_all_history():
+        owner_id = item.get("user_id")
+        if owner_id:
+            history_counts[owner_id] = history_counts.get(owner_id, 0) + 1
+    return [{**item, "generation_count": history_counts.get(item["id"], 0)} for item in list_users()]
+
+
+@router.patch("/admin/users/{user_id}/status")
+async def admin_user_status(user_id: str, req: UserStatusReq, admin: dict = Depends(require_super_admin)):
+    target = get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.get("role") == "super_admin":
+        raise HTTPException(status_code=400, detail="Super administrator cannot be disabled")
+    updated = set_user_enabled(user_id, req.enabled)
+    if not updated:
+        raise HTTPException(status_code=400, detail="Unable to update user")
+    return public_user(updated)
+
+
+@router.get("/admin/users/{user_id}/operations")
+async def admin_user_operations(user_id: str, limit: int = 500, admin: dict = Depends(require_super_admin)):
+    if not get_user_by_id(user_id):
+        raise HTTPException(status_code=404, detail="User not found")
+    return list_operation_logs(limit, user_id)
+
 @router.delete("/history/{task_id}")
 async def delete_history_item(task_id: str, user: dict = Depends(get_user_from_auth)):
     """
@@ -1004,6 +1045,10 @@ async def frontend_ws(ws: WebSocket):
                 else:
                     await ws.send_text(json.dumps({"type": "AUTH_REQUIRED", "message": "Send token first"}))
                     continue
+            active_user = get_user_by_id(ws_user_id)
+            if not active_user or not active_user.get("enabled", True):
+                await ws.send_text(json.dumps({"type": "TASK_REJECTED", "message": "Account is disabled"}))
+                continue
             # =========================================================
             # AMAZON POLLUTION (真实 Rufus 调用版本)
             # =========================================================
@@ -1160,6 +1205,9 @@ async def optimize_prompt(
         token = authorization.replace("Bearer ", "").strip()
         payload = parse_jwt(token)
         user_id = payload.get("sub")
+        active_user = get_user_by_id(user_id)
+        if not active_user or not active_user.get("enabled", True):
+            raise HTTPException(status_code=403, detail="Account is disabled")
 
     loop = asyncio.get_running_loop()
 

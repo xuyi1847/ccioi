@@ -13,7 +13,8 @@ import {
   Sparkles,
   History,
   Zap,
-  TrendingUp
+  TrendingUp,
+  ShieldCheck
 } from 'lucide-react';
 import { AppView, ToolConfig } from './types';
 import ChatTool from './components/ChatTool';
@@ -24,12 +25,13 @@ import TextTool from './components/TextTool';
 import HistoryTool from './components/HistoryTool';
 import AmazonPollutionTool from './components/AmazonPollutionTool';
 import QuantTool from './components/QuantTool';
+import AdminTool from './components/AdminTool';
 import Logo from './components/Logo';
 import AuthModal from './components/AuthModal';
 import PaymentModal from './components/PaymentModal';
 import { ThemeProvider } from './context/ThemeContext';
 import ThemeSelector from './components/ThemeSelector';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import UserMenu from './components/UserMenu';
 import { LanguageProvider, useLanguage } from './context/LanguageContext';
 import LanguageSelector from './components/LanguageSelector';
@@ -38,6 +40,7 @@ import { NotificationProvider } from './context/NotificationContext';
 
 const AppContent: React.FC = () => {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const resolveViewFromPath = (pathname: string): AppView => {
     if (pathname === '/fund') return AppView.QUANTITATIVE_ANALYSIS;
     return AppView.DASHBOARD;
@@ -66,6 +69,7 @@ const AppContent: React.FC = () => {
     { id: AppView.AMAZON_POLLUTION, name: t('nav.amazon'), description: t('nav.amazon.desc'), icon: Zap, color: 'text-amber-500' },
     { id: AppView.QUANTITATIVE_ANALYSIS, name: t('nav.quant'), description: t('nav.quant.desc'), icon: TrendingUp, color: 'text-green-500' },
     { id: AppView.HISTORY, name: t('nav.history'), description: t('nav.history.desc'), icon: History, color: 'text-app-subtext' },
+    ...(user?.role === 'super_admin' ? [{ id: AppView.ADMIN, name: '管理员控制台', description: '用户、状态与使用记录', icon: ShieldCheck, color: 'text-cyan-400' }] : []),
   ];
 
   const demoVideos = [
@@ -105,6 +109,7 @@ const AppContent: React.FC = () => {
       case AppView.AMAZON_POLLUTION: return <AmazonPollutionTool />;
       case AppView.QUANTITATIVE_ANALYSIS: return <QuantTool />;
       case AppView.HISTORY: return <HistoryTool />;
+      case AppView.ADMIN: return user?.role === 'super_admin' ? <AdminTool /> : null;
       default: return (
         <div className="flex-1 overflow-y-auto custom-scrollbar w-full">
           <div className="flex flex-col items-center gap-8 md:gap-16 py-4 md:py-8">
@@ -118,7 +123,7 @@ const AppContent: React.FC = () => {
             <div className="w-full max-w-6xl px-4">
               <h2 className="text-[10px] md:text-sm font-bold text-app-subtext uppercase tracking-[0.3em] mb-4 md:mb-8 text-center">{t('app.modules')}</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
-                {tools.filter(t => t.id !== AppView.HISTORY).map((tool) => (
+                {tools.filter(t => t.id !== AppView.HISTORY && t.id !== AppView.ADMIN).map((tool) => (
                   <button key={tool.id} onClick={() => setCurrentView(tool.id)} className="group bg-app-surface/40 hover:bg-app-surface border border-app-border p-4 md:p-6 rounded-2xl md:rounded-3xl transition-all hover:-translate-y-1 hover:border-app-accent/30 text-center relative overflow-hidden backdrop-blur-sm">
                     <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-app-base flex items-center justify-center mx-auto mb-3 md:mb-4 ${tool.color} group-hover:scale-110 transition-transform`}><tool.icon size={20} /></div>
                     <h3 className="text-sm md:text-base font-bold text-app-text mb-1 truncate">{tool.name}</h3>

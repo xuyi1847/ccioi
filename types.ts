@@ -18,6 +18,7 @@ export enum AppView {
   AUDIO = 'AUDIO',
   TEXT_ANALYSIS = 'TEXT_ANALYSIS',
   HISTORY = 'HISTORY',
+  ADMIN = 'ADMIN',
   AMAZON_POLLUTION = 'AMAZON_POLLUTION',
   QUANTITATIVE_ANALYSIS = 'QUANTITATIVE_ANALYSIS',
 }
@@ -30,6 +31,7 @@ export interface User {
   token: string;   // JWT token containing user info
   avatar?: string;
   role: 'user' | 'super_admin';
+  enabled: boolean;
 }
 
 export interface Message {

@@ -44,12 +44,14 @@ def init_database() -> None:
             password_salt TEXT NOT NULL,
             balance NUMERIC(14, 2) NOT NULL DEFAULT 0,
             role TEXT NOT NULL DEFAULT 'user',
+            enabled BOOLEAN NOT NULL DEFAULT TRUE,
             invite_code TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """,
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE",
         """
         CREATE TABLE IF NOT EXISTS operation_logs (
             id BIGSERIAL PRIMARY KEY,
@@ -126,6 +128,7 @@ def public_user(row: dict) -> dict:
         "name": row["name"],
         "balance": float(row["balance"]),
         "role": row.get("role", "user"),
+        "enabled": row.get("enabled", True),
     }
 
 
@@ -141,7 +144,7 @@ def log_operation(user_id: str, method: str, path: str, status_code: int, detail
             )
 
 
-def list_operation_logs(limit: int = 500) -> list[dict]:
+def list_operation_logs(limit: int = 500, user_id: Optional[str] = None) -> list[dict]:
     with connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -150,10 +153,11 @@ def list_operation_logs(limit: int = 500) -> list[dict]:
                        u.id AS user_id, u.email, u.name
                 FROM operation_logs l
                 LEFT JOIN users u ON u.id = l.user_id
+                WHERE (%s::uuid IS NULL OR l.user_id = %s::uuid)
                 ORDER BY l.created_at DESC
                 LIMIT %s
                 """,
-                (min(max(limit, 1), 2000),),
+                (user_id, user_id, min(max(limit, 1), 2000)),
             )
             return [
                 {**dict(row), "user_id": str(row["user_id"]) if row["user_id"] else None,
@@ -165,8 +169,35 @@ def list_operation_logs(limit: int = 500) -> list[dict]:
 def list_users() -> list[dict]:
     with connection() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT id, email, name, role FROM users ORDER BY created_at DESC")
-            return [{**dict(row), "id": str(row["id"])} for row in cursor.fetchall()]
+            cursor.execute(
+                """
+                SELECT u.id, u.email, u.name, u.role, u.enabled, u.balance,
+                       u.invite_code, u.created_at, COUNT(l.id) AS operation_count,
+                       MAX(l.created_at) AS last_active_at
+                FROM users u LEFT JOIN operation_logs l ON l.user_id = u.id
+                GROUP BY u.id ORDER BY u.created_at DESC
+                """
+            )
+            return [
+                {**dict(row), "id": str(row["id"]), "balance": float(row["balance"]),
+                 "created_at": row["created_at"].isoformat(),
+                 "last_active_at": row["last_active_at"].isoformat() if row["last_active_at"] else None}
+                for row in cursor.fetchall()
+            ]
+
+
+def set_user_enabled(user_id: str, enabled: bool) -> Optional[dict]:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE users SET enabled = %s, updated_at = NOW()
+                WHERE id = %s AND role <> 'super_admin'
+                RETURNING *
+                """,
+                (enabled, user_id),
+            )
+            return cursor.fetchone()
 
 
 def get_user_by_email(email: str) -> Optional[dict]:
