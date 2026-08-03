@@ -27,11 +27,13 @@ The server dispatches a model-independent payload:
   "image_url": "https://www.ccioi.com/api/storage/uploads/input.jpg",
   "image_frame": 0,
   "image_strength": 0.8,
-  "width": 768,
-  "height": 512,
-  "num_frames": 121,
+  "width": 1536,
+  "height": 1024,
+  "num_frames": 481,
   "fps": 24,
-  "seed": 42
+  "seed": 42,
+  "video_codec": "h264",
+  "audio_codec": "aac"
 }
 ```
 
@@ -44,6 +46,10 @@ The Worker owns model paths and translates these fields into its local command:
   `--sampling_option.aspect_ratio`, `--fps_save`, `--sampling_option.seed`.
 - LTX: `--output-path`, `--num-frames`, `--height`, `--width`, `--frame-rate`,
   `--seed`, plus its locally configured checkpoint, Gemma and upsampler paths.
+
+LTX defaults to 481 frames at 24 FPS (about 20 seconds) and 1536×1024.
+Width and height must be multiples of 64, and `num_frames` must not exceed 481.
+The Worker must encode the final video as H.264 with AAC audio.
 
 During migration, OpenSora tasks also contain a legacy `command` field. LTX
 Workers should use the structured fields and ignore unknown fields.

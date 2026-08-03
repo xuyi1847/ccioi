@@ -83,9 +83,9 @@ const VideoTool: React.FC = () => {
 
   useEffect(() => {
     if (videoModel === 'ltx-2.3') {
-      setWidth(768);
-      setHeight(512);
-      setNumFrames(121);
+      setWidth(1536);
+      setHeight(1024);
+      setNumFrames(481);
       setFps(24);
       setCondType('None');
     } else {
@@ -202,6 +202,12 @@ const VideoTool: React.FC = () => {
     if (!user) { notify.error("Authorization required."); return; }
     if (isUploading) { notify.warning("Asset sync in progress..."); return; }
     if (refImage && !refImageUrl) { notify.error("图片尚未上传成功，请重新选择图片。"); return; }
+    if (videoModel === 'ltx-2.3' && (numFrames < 1 || numFrames > 481)) {
+      notify.error("LTX 帧数必须在 1 到 481 之间。"); return;
+    }
+    if (videoModel === 'ltx-2.3' && (width % 64 !== 0 || height % 64 !== 0)) {
+      notify.error("LTX 分辨率的宽和高必须是 64 的倍数。"); return;
+    }
     setIsGenerating(true);
     setGeneratedVideoUrl(null);
     setLogs([]);
@@ -219,6 +225,8 @@ const VideoTool: React.FC = () => {
           image_url: videoModel === 'ltx-2.3' ? refImageUrl : undefined,
           image_frame: videoModel === 'ltx-2.3' && refImageUrl ? imageFrame : undefined,
           image_strength: videoModel === 'ltx-2.3' && refImageUrl ? imageStrength : undefined,
+          video_codec: videoModel === 'ltx-2.3' ? 'h264' : undefined,
+          audio_codec: videoModel === 'ltx-2.3' ? 'aac' : undefined,
         }
       });
       notify.info("Task dispatched to CCIOI Cluster.");
@@ -345,10 +353,10 @@ const VideoTool: React.FC = () => {
               </div>
             )}
             <div className="grid grid-cols-2 gap-2.5 p-2.5 bg-app-base/30 rounded-xl border border-app-border">
-              <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.frames')}</label><input type="number" value={numFrames} onChange={e => setNumFrames(parseInt(e.target.value))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
+              <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.frames')}{videoModel === 'ltx-2.3' ? '（最大 481）' : ''}</label><input type="number" min={1} max={videoModel === 'ltx-2.3' ? 481 : undefined} value={numFrames} onChange={e => setNumFrames(parseInt(e.target.value) || 1)} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
               <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.fps')}</label><input type="number" value={fps} onChange={e => setFps(parseInt(e.target.value))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
-              <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">Width</label><input type="number" min={64} step={32} value={width} onChange={e => setWidth(parseInt(e.target.value) || 768)} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
-              <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">Height</label><input type="number" min={64} step={32} value={height} onChange={e => setHeight(parseInt(e.target.value) || 512)} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
+              <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">Width{videoModel === 'ltx-2.3' ? '（64 倍数）' : ''}</label><input type="number" min={64} step={videoModel === 'ltx-2.3' ? 64 : 32} value={width} onChange={e => setWidth(parseInt(e.target.value) || (videoModel === 'ltx-2.3' ? 1536 : 512))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
+              <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">Height{videoModel === 'ltx-2.3' ? '（64 倍数）' : ''}</label><input type="number" min={64} step={videoModel === 'ltx-2.3' ? 64 : 32} value={height} onChange={e => setHeight(parseInt(e.target.value) || (videoModel === 'ltx-2.3' ? 1024 : 768))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
               <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">Seed</label><input type="number" value={seed} onChange={e => setSeed(parseInt(e.target.value) || 0)} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
               {videoModel === 'opensora' && <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.steps')}</label><input type="number" value={numSteps} onChange={e => setNumSteps(parseInt(e.target.value))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>}
               {videoModel === 'opensora' && <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.aspect_ratio')}</label><input type="text" value={aspectRatio} onChange={e => setAspectRatio(e.target.value)} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>}

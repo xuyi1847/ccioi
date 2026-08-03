@@ -1099,6 +1099,16 @@ async def frontend_ws(ws: WebSocket):
                     "message": f"Unsupported video model: {model}",
                 }))
                 continue
+            if model == "ltx-2.3":
+                ltx_width = int(parameters.get("width") or 1536)
+                ltx_height = int(parameters.get("height") or 1024)
+                ltx_frames = int(parameters.get("num_frames") or parameters.get("frames") or 481)
+                if ltx_frames < 1 or ltx_frames > 481:
+                    await ws.send_text(json.dumps({"type": "TASK_REJECTED", "message": "LTX num_frames must be between 1 and 481"}))
+                    continue
+                if ltx_width < 64 or ltx_height < 64 or ltx_width % 64 or ltx_height % 64:
+                    await ws.send_text(json.dumps({"type": "TASK_REJECTED", "message": "LTX width and height must be multiples of 64"}))
+                    continue
             gpu_id, gpu = select_idle_gpu(preferred_gpu_id, model)
             if not gpu:
                 message = (
@@ -1143,12 +1153,14 @@ async def frontend_ws(ws: WebSocket):
                 "user_id": ws_user_id,
                 "model": model,
                 "prompt": prompt,
-                "width": int(parameters.get("width") or 768),
-                "height": int(parameters.get("height") or 512),
-                "num_frames": int(parameters.get("num_frames") or parameters.get("frames") or 121),
+                "width": int(parameters.get("width") or (1536 if model == "ltx-2.3" else 768)),
+                "height": int(parameters.get("height") or (1024 if model == "ltx-2.3" else 512)),
+                "num_frames": int(parameters.get("num_frames") or parameters.get("frames") or (481 if model == "ltx-2.3" else 121)),
                 "fps": int(parameters.get("fps") or 24),
                 "seed": int(parameters.get("seed") or 42),
             }
+            if model == "ltx-2.3":
+                worker_payload.update({"video_codec": "h264", "audio_codec": "aac"})
             # LTX 图生视频字段为可选；没有 image_url 时仍按文生视频执行。
             image_url = parameters.get("image_url")
             if model == "ltx-2.3" and image_url:
