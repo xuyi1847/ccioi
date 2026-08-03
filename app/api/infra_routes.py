@@ -7,6 +7,7 @@ from io import BytesIO
 from html.parser import HTMLParser
 import ipaddress
 import socket
+import shlex
 from urllib.parse import urljoin, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
@@ -767,16 +768,17 @@ def build_torchrun_command(payload: dict,taskid: str) -> str:
         "scripts/diffusion/inference.py",
         p["config"],
         "--save-dir", f"outputs/{taskid}",
-        "--prompt", f"\"{p['prompt']}\"",
+        "--prompt", str(p["prompt"]),
         "--sampling_option.num_steps", str(p["steps"]),
         "--sampling_option.num_frames", str(p["frames"]),
         "--sampling_option.aspect_ratio", p["ratio"],
+        "--sampling_option.seed", str(p.get("seed", 42)),
         "--fps_save", str(p["fps"]),
         "--motion_score", str(p["motion_score"]),
     ]
     if p.get("ref_image"):
         cmd.extend(["--cond_type", p.get("cond") or "i2v_head", "--ref", p["ref_image"]])
-    return " ".join(cmd)
+    return shlex.join(cmd)
 
 GPU_HEARTBEAT_TIMEOUT = 20
 
@@ -785,14 +787,41 @@ def _gpu_is_online(info: dict) -> bool:
     return time.time() - info.get("last_heartbeat", 0) <= GPU_HEARTBEAT_TIMEOUT
 
 
-def select_idle_gpu(preferred_gpu_id: Optional[str] = None) -> Tuple[Optional[str], Optional[dict]]:
+def _gpu_supported_models(info: dict) -> list[str]:
+    models = info.get("supported_models")
+    if isinstance(models, list) and models:
+        return [str(model).lower() for model in models]
+    model = info.get("model")
+    if model:
+        return [str(model).lower()]
+    # 未声明能力的老客户端均视为 OpenSora。
+    return ["opensora"]
+
+
+def _gpu_supports_model(info: dict, model: str) -> bool:
+    return model.lower() in _gpu_supported_models(info)
+
+
+def select_idle_gpu(
+    preferred_gpu_id: Optional[str] = None,
+    model: str = "opensora",
+) -> Tuple[Optional[str], Optional[dict]]:
     if preferred_gpu_id:
         info = gpu_registry.get(preferred_gpu_id)
-        if info and info["status"] == "idle" and _gpu_is_online(info):
+        if (
+            info
+            and info["status"] == "idle"
+            and _gpu_is_online(info)
+            and _gpu_supports_model(info, model)
+        ):
             return preferred_gpu_id, info
         return None, None
     for gpu_id, info in gpu_registry.items():
-        if info["status"] == "idle" and _gpu_is_online(info):
+        if (
+            info["status"] == "idle"
+            and _gpu_is_online(info)
+            and _gpu_supports_model(info, model)
+        ):
             return gpu_id, info
     return None, None
 
@@ -808,6 +837,7 @@ async def list_gpus(auth: dict = Depends(get_user_from_auth)):
                 "status": info["status"] if _gpu_is_online(info) else "offline",
                 "current_task": info.get("current_task"),
                 "last_seen_seconds": max(0, round(now - info.get("last_heartbeat", now), 1)),
+                "supported_models": _gpu_supported_models(info),
                 "metadata": info.get("metadata") or {},
             }
             for gpu_id, info in sorted(gpu_registry.items())
@@ -840,6 +870,8 @@ async def gpu_ws(ws: WebSocket):
     gpu_registry[gpu_id] = {
         "ws": ws,
         "name": register_msg.get("name") or requested_gpu_id,
+        "model": register_msg.get("model"),
+        "supported_models": register_msg.get("supported_models") or register_msg.get("models"),
         "metadata": {
             key: value for key, value in register_msg.items()
             if key not in {"type", "gpu_id", "name"} and isinstance(value, (str, int, float, bool))
@@ -986,11 +1018,19 @@ async def frontend_ws(ws: WebSocket):
 
             # 调度 GPU：前端可指定 preferred_gpu_id，为空时保持自动调度。
             preferred_gpu_id = data.get("preferred_gpu_id")
-            gpu_id, gpu = select_idle_gpu(preferred_gpu_id)
+            parameters = data.get("parameters") or {}
+            model = str(data.get("model") or parameters.get("model") or "opensora").lower()
+            if model not in {"opensora", "ltx-2.3"}:
+                await ws.send_text(json.dumps({
+                    "type": "TASK_REJECTED",
+                    "message": f"Unsupported video model: {model}",
+                }))
+                continue
+            gpu_id, gpu = select_idle_gpu(preferred_gpu_id, model)
             if not gpu:
                 message = (
-                    f"GPU {preferred_gpu_id} is busy or offline"
-                    if preferred_gpu_id else "No idle GPU available"
+                    f"GPU {preferred_gpu_id} is busy, offline, or does not support {model}"
+                    if preferred_gpu_id else f"No idle GPU supports {model}"
                 )
                 await ws.send_text(json.dumps({
                     "type": "TASK_REJECTED",
@@ -1001,8 +1041,8 @@ async def frontend_ws(ws: WebSocket):
 
             # 构建任务
             task_id = str(uuid.uuid4())
-            command = build_torchrun_command(data,task_id)
-            prompt = (data.get("parameters") or {}).get("prompt")
+            command = build_torchrun_command(data, task_id) if model == "opensora" else None
+            prompt = parameters.get("prompt")
 
             # 保存 task 上下文（保证 GPU 回来时一定能补齐 user_id/prompt）
             task_ctx_map[task_id] = {
@@ -1018,21 +1058,28 @@ async def frontend_ws(ws: WebSocket):
             task_gpu_map[task_id] = gpu_id
 
             print(f"📤 Dispatch task {task_id} to GPU {gpu_id}")
-            print("🧠 Torchrun command:")
-            print(command)
+            print(f"🧠 Video model: {model}")
+            if command:
+                print("🧠 Legacy OpenSora command:")
+                print(command)
 
             # 发给 GPU：把 user_id/prompt 也带上（这会让 gpu_client 直接回传，不依赖补齐）
-            await gpu["ws"].send_text(
-                json.dumps(
-                    {
-                        "type": "exec_command",
-                        "task_id": task_id,
-                        "command": command,
-                        "user_id": ws_user_id,
-                        "prompt": prompt,
-                    }
-                )
-            )
+            worker_payload = {
+                "type": "exec_command",
+                "task_id": task_id,
+                "user_id": ws_user_id,
+                "model": model,
+                "prompt": prompt,
+                "width": int(parameters.get("width") or 768),
+                "height": int(parameters.get("height") or 512),
+                "num_frames": int(parameters.get("num_frames") or parameters.get("frames") or 121),
+                "fps": int(parameters.get("fps") or 24),
+                "seed": int(parameters.get("seed") or 42),
+            }
+            # 老 OpenSora Worker 仍从 command 执行；新 Worker 可直接消费上述统一字段。
+            if command:
+                worker_payload["command"] = command
+            await gpu["ws"].send_text(json.dumps(worker_payload))
 
             # Ack 前端
             await ws.send_text(json.dumps({"type": "TASK_ACCEPTED", "task_id": task_id, "gpu_id": gpu_id}))

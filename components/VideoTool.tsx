@@ -21,12 +21,14 @@ const CONFIG_FILES = [
 const COND_TYPES = ['None', 'i2v_head', 'i2v_tail', 'i2v_loop'];
 
 interface TaskLog { stream: 'stdout' | 'stderr'; line: string; }
+type VideoModel = 'opensora' | 'ltx-2.3';
 interface GpuNode {
   id: string;
   name: string;
   status: 'idle' | 'busy' | 'offline';
   current_task?: string | null;
   last_seen_seconds: number;
+  supported_models: string[];
   metadata?: Record<string, string | number | boolean>;
 }
 
@@ -37,12 +39,16 @@ const VideoTool: React.FC = () => {
   const { user } = useAuth();
   
   const [prompt, setPrompt] = useState('A futuristic landscape with flying vehicles and neon structures');
+  const [videoModel, setVideoModel] = useState<VideoModel>('opensora');
   const [configFile, setConfigFile] = useState(CONFIG_FILES[0]);
   const [condType, setCondType] = useState('None');
   const [numSteps, setNumSteps] = useState(40);
   const [numFrames, setNumFrames] = useState(112);
   const [aspectRatio, setAspectRatio] = useState('9:16');
   const [fps, setFps] = useState(16);
+  const [width, setWidth] = useState(512);
+  const [height, setHeight] = useState(768);
+  const [seed, setSeed] = useState(42);
   const [nprocPerNode, setNprocPerNode] = useState(1);
   const [motionScore, setMotionScore] = useState(6);
   const [refImage, setRefImage] = useState<string | null>(null);
@@ -72,6 +78,22 @@ const VideoTool: React.FC = () => {
     if (refImage) { if (condType === 'None') setCondType('i2v_head'); } 
     else { setCondType('None'); }
   }, [refImage]);
+
+  useEffect(() => {
+    if (videoModel === 'ltx-2.3') {
+      setWidth(768);
+      setHeight(512);
+      setNumFrames(121);
+      setFps(24);
+      setCondType('None');
+    } else {
+      setWidth(512);
+      setHeight(768);
+      setNumFrames(112);
+      setFps(16);
+    }
+    setSelectedGpuId('');
+  }, [videoModel]);
 
   useEffect(() => {
     if (!user?.token) {
@@ -126,7 +148,7 @@ const VideoTool: React.FC = () => {
             const newRecord: HistoryRecord = {
               id: data.task_id || Date.now().toString(),
               type: 'video', prompt, url: data.output.public_url, timestamp: Date.now(),
-              params: { config: configFile, cond: condType, steps: numSteps, frames: numFrames, fps, nproc_per_node: nprocPerNode, motion_score: motionScore }
+              params: { model: videoModel, config: configFile, cond: condType, steps: numSteps, frames: numFrames, width, height, fps, seed, nproc_per_node: nprocPerNode, motion_score: motionScore }
             };
             const existingHistory = JSON.parse(localStorage.getItem('ccioi_video_history') || '[]');
             localStorage.setItem('ccioi_video_history', JSON.stringify([newRecord, ...existingHistory]));
@@ -139,7 +161,7 @@ const VideoTool: React.FC = () => {
         }
       } catch (e) {}
     }
-  }, [lastMessage, prompt, configFile, condType, numSteps, numFrames, fps, nprocPerNode, motionScore, disconnect, notify]);
+  }, [lastMessage, prompt, videoModel, configFile, condType, numSteps, numFrames, width, height, fps, seed, nprocPerNode, motionScore, disconnect, notify]);
 
   const handleOptimize = async () => {
     if (!prompt.trim() || isOptimizing) return;
@@ -184,8 +206,9 @@ const VideoTool: React.FC = () => {
       if (!isConnected) await connect();
       sendCommand({
         type: 'TASK_EXECUTION', task: 'VIDEO_GENERATION', token: user.token, timestamp: new Date().toISOString(),
+        model: videoModel,
         preferred_gpu_id: selectedGpuId || undefined,
-        parameters: { prompt: prompt.replace(/"/g, '\\"'), config: configFile, cond: condType, steps: numSteps, frames: numFrames, ratio: aspectRatio, fps, nproc_per_node: nprocPerNode, motion_score: motionScore, ref_image: refImageUrl }
+        parameters: { model: videoModel, prompt, config: configFile, cond: condType, steps: numSteps, frames: numFrames, num_frames: numFrames, ratio: aspectRatio, width, height, fps, seed, nproc_per_node: nprocPerNode, motion_score: motionScore, ref_image: refImageUrl }
       });
       notify.info("Task dispatched to CCIOI Cluster.");
     } catch (err) {
@@ -206,6 +229,25 @@ const VideoTool: React.FC = () => {
             </div>
           </div>
           <div className="space-y-4">
+            <div className="bg-app-base/50 p-2.5 rounded-xl border border-app-border">
+              <label className="text-[9px] text-app-subtext uppercase font-bold block mb-2">视频模型服务</label>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { id: 'opensora', label: 'OpenSora' },
+                  { id: 'ltx-2.3', label: 'LTX 2.3' },
+                ] as Array<{ id: VideoModel; label: string }>).map((model) => (
+                  <button
+                    type="button"
+                    key={model.id}
+                    onClick={() => setVideoModel(model.id)}
+                    disabled={isGenerating}
+                    className={`rounded-lg border px-2 py-2 text-[10px] font-bold transition-all ${videoModel === model.id ? 'border-cyan-400 bg-cyan-500/15 text-cyan-300' : 'border-app-border text-app-subtext hover:border-cyan-500/40'}`}
+                  >
+                    {model.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="bg-app-base/50 p-2.5 rounded-xl border border-app-border"><label className="text-[9px] text-app-subtext uppercase font-bold block mb-1">Runner URL</label>
               <div className="flex gap-2"><input type="text" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} className="flex-1 bg-transparent text-[10px] text-app-text outline-none" placeholder="ws://..." /><Link size={10} className="text-app-subtext" /></div>
             </div>
@@ -213,7 +255,7 @@ const VideoTool: React.FC = () => {
               <div className="flex items-center justify-between mb-2.5">
                 <div>
                   <label className="text-[11px] text-cyan-300 font-bold flex items-center gap-1.5"><Cpu size={13} /> 选择生成 GPU</label>
-                  <div className="text-[8px] text-app-subtext mt-0.5">{gpuNodes.filter((node) => node.status === 'idle').length} 台空闲 / {gpuNodes.length} 台已连接</div>
+                  <div className="text-[8px] text-app-subtext mt-0.5">{gpuNodes.filter((node) => node.status === 'idle' && (node.supported_models || ['opensora']).includes(videoModel)).length} 台可用 / {gpuNodes.length} 台已连接</div>
                 </div>
                 <button
                   type="button"
@@ -236,7 +278,8 @@ const VideoTool: React.FC = () => {
                   <span className={`w-2 h-2 rounded-full border ${selectedGpuId === '' ? 'bg-cyan-400 border-cyan-300' : 'border-app-subtext'}`} />
                 </button>
                 {gpuNodes.map((node) => {
-                  const available = node.status === 'idle';
+                  const compatible = (node.supported_models || ['opensora']).includes(videoModel);
+                  const available = node.status === 'idle' && compatible;
                   const selected = selectedGpuId === node.id;
                   return (
                     <button
@@ -248,7 +291,7 @@ const VideoTool: React.FC = () => {
                     >
                       <div className="min-w-0">
                         <div className="text-[10px] font-bold text-app-text truncate">{node.name === node.id ? node.id : `${node.name} (${node.id})`}</div>
-                        <div className="text-[8px] text-app-subtext mt-0.5">{node.status === 'idle' ? '空闲' : node.status === 'busy' ? '生成中' : '离线'}</div>
+                        <div className="text-[8px] text-app-subtext mt-0.5">{!compatible ? `不支持 ${videoModel}` : node.status === 'idle' ? '空闲' : node.status === 'busy' ? '生成中' : '离线'}</div>
                       </div>
                       <span className={`w-2 h-2 rounded-full border shrink-0 ${selected ? 'bg-cyan-400 border-cyan-300' : available ? 'bg-green-400 border-green-300' : node.status === 'busy' ? 'bg-amber-400 border-amber-300' : 'bg-slate-500 border-slate-400'}`} />
                     </button>
@@ -265,27 +308,34 @@ const VideoTool: React.FC = () => {
                 {isOptimizing && <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] rounded-xl flex items-center justify-center"><Loader2 size={16} className="text-cyan-400 animate-spin" /></div>}
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-[9px] font-bold text-app-subtext uppercase tracking-widest mb-1">{t('tool.video.config')}</label>
-                <select value={configFile} onChange={(e) => setConfigFile(e.target.value)} className="w-full bg-app-base border border-app-border rounded-lg p-1.5 text-[10px] text-app-text outline-none">{CONFIG_FILES.map(f => <option key={f} value={f}>{f.split('/').pop()}</option>)}</select>
-              </div>
-              <div><label className="block text-[9px] font-bold text-app-subtext uppercase tracking-widest mb-1">{t('tool.video.cond_type')}</label>
-                <select value={condType} onChange={(e) => setCondType(e.target.value)} className="w-full bg-app-base border border-app-border rounded-lg p-1.5 text-[10px] text-app-text outline-none disabled:opacity-50" disabled={!refImage && condType === 'None'}>{COND_TYPES.map(t => <option key={t} value={t} disabled={t !== 'None' && !refImage}>{t}</option>)}</select>
-              </div>
-            </div>
-            <div><label className="block text-[10px] font-bold text-app-subtext uppercase tracking-widest mb-1.5">{t('tool.video.ref_image')}</label>
-              <div onClick={() => !refImage && !isUploading && fileInputRef.current?.click()} className="aspect-video bg-app-base border border-dashed border-app-border rounded-xl flex items-center justify-center cursor-pointer overflow-hidden group">
-                {isUploading ? <div className="flex flex-col items-center gap-1"><Loader2 className="animate-spin text-cyan-400" size={16} /><span className="text-[8px] text-app-subtext uppercase font-bold">Uploading</span></div> : 
-                  refImage ? <div className="relative w-full h-full"><img src={refImage} className="w-full h-full object-cover" /><button onClick={(e) => {e.stopPropagation(); setRefImage(null); setRefImageUrl(null);}} className="absolute top-1.5 right-1.5 p-1 bg-black/60 rounded-full text-red-400"><Trash2 size={12}/></button></div> : <ImageIcon className="text-app-subtext opacity-20" size={20} />}
-                <input type="file" ref={fileInputRef} onChange={handleImageUpload} className="hidden" accept="image/*" />
-              </div>
-            </div>
+            {videoModel === 'opensora' && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className="block text-[9px] font-bold text-app-subtext uppercase tracking-widest mb-1">{t('tool.video.config')}</label>
+                    <select value={configFile} onChange={(e) => setConfigFile(e.target.value)} className="w-full bg-app-base border border-app-border rounded-lg p-1.5 text-[10px] text-app-text outline-none">{CONFIG_FILES.map(f => <option key={f} value={f}>{f.split('/').pop()}</option>)}</select>
+                  </div>
+                  <div><label className="block text-[9px] font-bold text-app-subtext uppercase tracking-widest mb-1">{t('tool.video.cond_type')}</label>
+                    <select value={condType} onChange={(e) => setCondType(e.target.value)} className="w-full bg-app-base border border-app-border rounded-lg p-1.5 text-[10px] text-app-text outline-none disabled:opacity-50" disabled={!refImage && condType === 'None'}>{COND_TYPES.map(t => <option key={t} value={t} disabled={t !== 'None' && !refImage}>{t}</option>)}</select>
+                  </div>
+                </div>
+                <div><label className="block text-[10px] font-bold text-app-subtext uppercase tracking-widest mb-1.5">{t('tool.video.ref_image')}</label>
+                  <div onClick={() => !refImage && !isUploading && fileInputRef.current?.click()} className="aspect-video bg-app-base border border-dashed border-app-border rounded-xl flex items-center justify-center cursor-pointer overflow-hidden group">
+                    {isUploading ? <div className="flex flex-col items-center gap-1"><Loader2 className="animate-spin text-cyan-400" size={16} /><span className="text-[8px] text-app-subtext uppercase font-bold">Uploading</span></div> :
+                      refImage ? <div className="relative w-full h-full"><img src={refImage} className="w-full h-full object-cover" /><button onClick={(e) => {e.stopPropagation(); setRefImage(null); setRefImageUrl(null);}} className="absolute top-1.5 right-1.5 p-1 bg-black/60 rounded-full text-red-400"><Trash2 size={12}/></button></div> : <ImageIcon className="text-app-subtext opacity-20" size={20} />}
+                    <input type="file" ref={fileInputRef} onChange={handleImageUpload} className="hidden" accept="image/*" />
+                  </div>
+                </div>
+              </>
+            )}
             <div className="grid grid-cols-2 gap-2.5 p-2.5 bg-app-base/30 rounded-xl border border-app-border">
-              <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.steps')}</label><input type="number" value={numSteps} onChange={e => setNumSteps(parseInt(e.target.value))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
               <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.frames')}</label><input type="number" value={numFrames} onChange={e => setNumFrames(parseInt(e.target.value))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
-              <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.aspect_ratio')}</label><input type="text" value={aspectRatio} onChange={e => setAspectRatio(e.target.value)} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
               <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.fps')}</label><input type="number" value={fps} onChange={e => setFps(parseInt(e.target.value))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
-              <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.nproc_per_node')}</label><input type="number" min={1} value={nprocPerNode} onChange={e => setNprocPerNode(Math.max(1, parseInt(e.target.value) || 1))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
+              <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">Width</label><input type="number" min={64} step={32} value={width} onChange={e => setWidth(parseInt(e.target.value) || 768)} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
+              <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">Height</label><input type="number" min={64} step={32} value={height} onChange={e => setHeight(parseInt(e.target.value) || 512)} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
+              <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">Seed</label><input type="number" value={seed} onChange={e => setSeed(parseInt(e.target.value) || 0)} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
+              {videoModel === 'opensora' && <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.steps')}</label><input type="number" value={numSteps} onChange={e => setNumSteps(parseInt(e.target.value))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>}
+              {videoModel === 'opensora' && <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.aspect_ratio')}</label><input type="text" value={aspectRatio} onChange={e => setAspectRatio(e.target.value)} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>}
+              {videoModel === 'opensora' && <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.nproc_per_node')}</label><input type="number" min={1} value={nprocPerNode} onChange={e => setNprocPerNode(Math.max(1, parseInt(e.target.value) || 1))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>}
             </div>
             <button onClick={handleDispatch} disabled={isGenerating || isUploading} className={`w-full py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition-all uppercase tracking-widest text-[10px] ${!user ? 'bg-app-surface text-app-subtext border border-app-border cursor-not-allowed' : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 text-white shadow-cyan-900/30'}`}>
               {isGenerating || isConnecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : !user ? <Lock className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current" />}
