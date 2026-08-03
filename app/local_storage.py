@@ -71,6 +71,20 @@ def read_user_history(user_id: str) -> list[dict]:
     return records
 
 
+def read_all_history() -> list[dict]:
+    users_root = STORAGE_ROOT / "users"
+    records = []
+    if not users_root.exists():
+        return records
+    for user_directory in users_root.iterdir():
+        if not user_directory.is_dir():
+            continue
+        for item in read_user_history(user_directory.name):
+            records.append({**item, "user_id": user_directory.name})
+    records.sort(key=lambda item: item.get("created_at", 0), reverse=True)
+    return records
+
+
 def delete_history(user_id: str, task_id: str) -> None:
     user_id = safe_id(user_id, "user_id")
     task_id = safe_id(task_id, "task_id")

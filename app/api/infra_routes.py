@@ -47,6 +47,9 @@ from app.database import (
     get_user_by_email,
     get_user_by_id,
     get_user_config,
+    list_operation_logs,
+    list_users,
+    log_operation,
     public_user,
     list_geo_reports,
     save_geo_report,
@@ -58,6 +61,7 @@ from app.local_storage import (
     delete_history,
     public_url as local_public_url,
     read_user_history,
+    read_all_history,
     safe_id,
     save_upload,
     write_json,
@@ -101,6 +105,13 @@ def get_user_from_auth(authorization: str = Header(...)) -> dict:
         raise HTTPException(status_code=401, detail="Invalid auth header")
     token = authorization.replace("Bearer ", "").strip()
     return parse_jwt(token)
+
+
+def require_super_admin(auth: dict = Depends(get_user_from_auth)) -> dict:
+    user = get_user_by_id(auth.get("sub", ""))
+    if not user or user.get("role") != "super_admin":
+        raise HTTPException(status_code=403, detail="Super administrator access required")
+    return user
 
 # =========================================================
 # CORS
@@ -721,6 +732,21 @@ async def get_history(user: dict = Depends(get_user_from_auth)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.get("/admin/history")
+async def admin_history(admin: dict = Depends(require_super_admin)):
+    users = {item["id"]: item for item in list_users()}
+    return [
+        {**item, "user_email": users.get(item.get("user_id"), {}).get("email"),
+         "user_name": users.get(item.get("user_id"), {}).get("name")}
+        for item in read_all_history()
+    ]
+
+
+@router.get("/admin/operations")
+async def admin_operations(limit: int = 500, admin: dict = Depends(require_super_admin)):
+    return list_operation_logs(limit)
+
 @router.delete("/history/{task_id}")
 async def delete_history_item(task_id: str, user: dict = Depends(get_user_from_auth)):
     """
@@ -1090,6 +1116,11 @@ async def frontend_ws(ws: WebSocket):
             if command:
                 worker_payload["command"] = command
             await gpu["ws"].send_text(json.dumps(worker_payload))
+            log_operation(ws_user_id, "WS", "/ws/frontend/video-generation", 202, {
+                "task_id": task_id,
+                "model": model,
+                "gpu_id": gpu_id,
+            })
 
             # Ack 前端
             await ws.send_text(json.dumps({"type": "TASK_ACCEPTED", "task_id": task_id, "gpu_id": gpu_id}))

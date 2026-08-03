@@ -29,6 +29,7 @@ export interface User {
   balance: number; // Stored in credits/tokens
   token: string;   // JWT token containing user info
   avatar?: string;
+  role: 'user' | 'super_admin';
 }
 
 export interface Message {
@@ -45,6 +46,9 @@ export interface HistoryRecord {
   url: string;
   timestamp: number;
   params?: any;
+  user_id?: string;
+  user_email?: string;
+  user_name?: string;
 }
 
 export interface GeneratedImage {

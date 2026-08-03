@@ -104,6 +104,22 @@ export const mockBackend = {
     return await response.json();
   },
 
+  async getAdminHistory(token: string): Promise<HistoryRecord[]> {
+    const response = await fetch(`${API_BASE}/admin/history`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error('Failed to fetch all generation records');
+    return await response.json();
+  },
+
+  async getAdminOperations(token: string): Promise<any[]> {
+    const response = await fetch(`${API_BASE}/admin/operations?limit=500`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error('Failed to fetch operation records');
+    return await response.json();
+  },
+
   async deleteHistoryItem(token: string, id: string): Promise<void> {
     const response = await fetch(`${API_BASE}/history/${id}`, {
       method: 'DELETE',

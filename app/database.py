@@ -43,9 +43,22 @@ def init_database() -> None:
             password_hash TEXT NOT NULL,
             password_salt TEXT NOT NULL,
             balance NUMERIC(14, 2) NOT NULL DEFAULT 0,
+            role TEXT NOT NULL DEFAULT 'user',
             invite_code TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user'",
+        """
+        CREATE TABLE IF NOT EXISTS operation_logs (
+            id BIGSERIAL PRIMARY KEY,
+            user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+            method TEXT NOT NULL,
+            path TEXT NOT NULL,
+            status_code INTEGER NOT NULL,
+            detail JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """,
         """
@@ -78,6 +91,7 @@ def init_database() -> None:
         """,
         "CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users (LOWER(email))",
         "CREATE INDEX IF NOT EXISTS idx_geo_reports_user_created ON geo_reports (user_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_operation_logs_created ON operation_logs (created_at DESC)",
     )
     with connection() as conn:
         with conn.cursor() as cursor:
@@ -88,6 +102,10 @@ def init_database() -> None:
                     "INSERT INTO invite_codes (code) VALUES (%s) ON CONFLICT (code) DO NOTHING",
                     (code,),
                 )
+            cursor.execute(
+                "UPDATE users SET role = 'super_admin', updated_at = NOW() WHERE LOWER(email) = LOWER(%s)",
+                ("xuyi1847@gmail.com",),
+            )
 
 
 def hash_password(password: str, salt_hex: Optional[str] = None) -> tuple[str, str]:
@@ -107,7 +125,48 @@ def public_user(row: dict) -> dict:
         "email": row["email"],
         "name": row["name"],
         "balance": float(row["balance"]),
+        "role": row.get("role", "user"),
     }
+
+
+def log_operation(user_id: str, method: str, path: str, status_code: int, detail: Optional[dict] = None) -> None:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO operation_logs (user_id, method, path, status_code, detail)
+                VALUES (%s, %s, %s, %s, %s::jsonb)
+                """,
+                (user_id, method, path, status_code, json.dumps(detail or {}, ensure_ascii=False)),
+            )
+
+
+def list_operation_logs(limit: int = 500) -> list[dict]:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT l.id, l.method, l.path, l.status_code, l.detail, l.created_at,
+                       u.id AS user_id, u.email, u.name
+                FROM operation_logs l
+                LEFT JOIN users u ON u.id = l.user_id
+                ORDER BY l.created_at DESC
+                LIMIT %s
+                """,
+                (min(max(limit, 1), 2000),),
+            )
+            return [
+                {**dict(row), "user_id": str(row["user_id"]) if row["user_id"] else None,
+                 "created_at": row["created_at"].isoformat()}
+                for row in cursor.fetchall()
+            ]
+
+
+def list_users() -> list[dict]:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT id, email, name, role FROM users ORDER BY created_at DESC")
+            return [{**dict(row), "id": str(row["id"])} for row in cursor.fetchall()]
 
 
 def get_user_by_email(email: str) -> Optional[dict]:

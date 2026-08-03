@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Calendar, Download, ExternalLink, History, Loader2, Lock, Play, RefreshCcw, Trash2, Video, X } from 'lucide-react';
+import { Activity, Calendar, Download, ExternalLink, History, Loader2, Lock, Play, RefreshCcw, ShieldCheck, Trash2, Video, X } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
@@ -12,6 +12,16 @@ const normalizeTimestamp = (value: unknown) => {
   return numeric < 10_000_000_000 ? numeric * 1000 : numeric;
 };
 
+interface OperationRecord {
+  id: number;
+  method: string;
+  path: string;
+  status_code: number;
+  created_at: string;
+  email?: string;
+  name?: string;
+}
+
 const HistoryTool: React.FC = () => {
   const { t } = useLanguage();
   const { user } = useAuth();
@@ -21,10 +31,13 @@ const HistoryTool: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [playingItem, setPlayingItem] = useState<HistoryRecord | null>(null);
   const [brokenVideos, setBrokenVideos] = useState<Record<string, boolean>>({});
+  const [view, setView] = useState<'mine' | 'all' | 'operations'>('mine');
+  const [operations, setOperations] = useState<OperationRecord[]>([]);
+  const isAdmin = user?.role === 'super_admin';
 
   useEffect(() => {
-    if (user) loadHistory();
-  }, [user?.id]);
+    if (user) loadData();
+  }, [user?.id, view]);
 
   useEffect(() => {
     if (!playingItem) return;
@@ -35,12 +48,18 @@ const HistoryTool: React.FC = () => {
     return () => window.removeEventListener('keydown', close);
   }, [playingItem]);
 
-  const loadHistory = async () => {
+  const loadData = async () => {
     if (!user) return;
     setIsLoading(true);
     setError(null);
     try {
-      const data = await mockBackend.getHistory(user.token);
+      if (view === 'operations' && isAdmin) {
+        setOperations(await mockBackend.getAdminOperations(user.token));
+        return;
+      }
+      const data = view === 'all' && isAdmin
+        ? await mockBackend.getAdminHistory(user.token)
+        : await mockBackend.getHistory(user.token);
       const mappedData: HistoryRecord[] = (data as any[])
         .map((item) => ({
           id: String(item.id || ''),
@@ -49,6 +68,9 @@ const HistoryTool: React.FC = () => {
           timestamp: normalizeTimestamp(item.created_at ?? item.timestamp),
           type: item.video_url ? 'video' : (item.type || 'video'),
           params: item.params || {},
+          user_id: item.user_id,
+          user_email: item.user_email,
+          user_name: item.user_name,
         }))
         .filter((item) => item.id && item.url);
       setHistory(mappedData.sort((a, b) => b.timestamp - a.timestamp));
@@ -94,16 +116,38 @@ const HistoryTool: React.FC = () => {
           <h2 className="text-xl sm:text-2xl font-bold text-app-text flex items-center gap-3"><History className="text-app-accent" size={26} />{t('tool.history.title')}</h2>
           <p className="text-app-subtext text-xs sm:text-sm mt-1">{isLoading ? '正在同步…' : t('tool.history.video_count').replace('{{count}}', history.length.toString())}</p>
         </div>
-        <button onClick={loadHistory} disabled={isLoading} className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-app-surface-hover hover:bg-app-border text-app-text rounded-xl text-xs font-bold border border-app-border disabled:opacity-50">
+        <button onClick={loadData} disabled={isLoading} className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-app-surface-hover hover:bg-app-border text-app-text rounded-xl text-xs font-bold border border-app-border disabled:opacity-50">
           <RefreshCcw size={14} className={isLoading ? 'animate-spin' : ''} /><span className="hidden sm:inline">刷新</span>
         </button>
       </div>
 
+      {isAdmin && (
+        <div className="flex flex-wrap gap-2 shrink-0 p-1.5 bg-app-surface/50 border border-app-border rounded-xl w-fit">
+          {([
+            ['mine', '我的生成记录', History],
+            ['all', '全部生成记录', ShieldCheck],
+            ['operations', '全部操作记录', Activity],
+          ] as const).map(([id, label, Icon]) => (
+            <button key={id} onClick={() => setView(id)} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-bold transition-colors ${view === id ? 'bg-app-accent text-white' : 'text-app-subtext hover:text-app-text hover:bg-app-surface-hover'}`}>
+              <Icon size={13} />{label}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1 sm:pr-2 pb-10">
-        {isLoading && history.length === 0 ? (
+        {isLoading && history.length === 0 && operations.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center"><Loader2 className="w-12 h-12 text-app-accent animate-spin opacity-30" /><p className="mt-4 text-app-subtext text-xs">正在读取历史记录…</p></div>
         ) : error ? (
-          <div className="h-full flex flex-col items-center justify-center text-center p-12 bg-red-500/5 rounded-3xl border border-red-500/10"><p className="text-red-400 mb-4">{error}</p><button onClick={loadHistory} className="text-app-accent hover:underline text-sm font-bold">重试</button></div>
+          <div className="h-full flex flex-col items-center justify-center text-center p-12 bg-red-500/5 rounded-3xl border border-red-500/10"><p className="text-red-400 mb-4">{error}</p><button onClick={loadData} className="text-app-accent hover:underline text-sm font-bold">重试</button></div>
+        ) : view === 'operations' ? (
+          <div className="overflow-x-auto rounded-2xl border border-app-border bg-app-surface/50">
+            <table className="w-full min-w-[720px] text-left text-xs">
+              <thead className="bg-app-base/80 text-app-subtext"><tr><th className="p-3">时间</th><th className="p-3">用户</th><th className="p-3">操作</th><th className="p-3">接口</th><th className="p-3">状态</th></tr></thead>
+              <tbody>{operations.map((item) => <tr key={item.id} className="border-t border-app-border text-app-text"><td className="p-3 whitespace-nowrap">{new Date(item.created_at).toLocaleString()}</td><td className="p-3"><div>{item.name || '-'}</div><div className="text-[10px] text-app-subtext">{item.email || '-'}</div></td><td className="p-3 font-mono">{item.method}</td><td className="p-3 font-mono text-[11px]">{item.path}</td><td className={`p-3 font-bold ${item.status_code < 400 ? 'text-green-400' : 'text-red-400'}`}>{item.status_code}</td></tr>)}</tbody>
+            </table>
+            {operations.length === 0 && <div className="p-10 text-center text-app-subtext text-xs">暂无操作记录，新操作会从本次更新后开始记录。</div>}
+          </div>
         ) : history.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-12 bg-app-surface/30 rounded-3xl border border-app-border border-dashed"><div className="w-20 h-20 bg-app-base rounded-full flex items-center justify-center mb-6 text-app-subtext/20"><Video size={40} /></div><p className="text-app-subtext max-w-xs">{t('tool.history.empty')}</p></div>
         ) : (
@@ -125,11 +169,12 @@ const HistoryTool: React.FC = () => {
                   </button>
                   <div className="absolute top-2 right-2 flex gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                     <a href={item.url} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()} className="p-2 bg-black/70 rounded-full text-white hover:bg-app-accent"><ExternalLink size={13} /></a>
-                    <button onClick={() => deleteItem(item.id)} className="p-2 bg-black/70 rounded-full text-white hover:bg-red-500"><Trash2 size={13} /></button>
+                    {view === 'mine' && <button onClick={() => deleteItem(item.id)} className="p-2 bg-black/70 rounded-full text-white hover:bg-red-500"><Trash2 size={13} /></button>}
                   </div>
                   {brokenVideos[item.id] && <div className="absolute inset-x-0 bottom-0 bg-red-950/90 text-red-300 text-[10px] px-3 py-2 text-center">预览加载失败，点击播放重试</div>}
                 </div>
                 <div className="p-4">
+                  {view === 'all' && <div className="mb-2 text-[10px] text-cyan-400 truncate">{item.user_name || '未知用户'} · {item.user_email || item.user_id}</div>}
                   <p className="text-sm text-app-text font-medium line-clamp-2 min-h-10">{item.prompt}</p>
                   <div className="mt-3 flex items-center justify-between gap-2 text-[10px] text-app-subtext">
                     <span className="flex items-center gap-1 truncate"><Calendar size={11} />{formatDate(item.timestamp)}</span>
