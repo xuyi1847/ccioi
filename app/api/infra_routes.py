@@ -870,7 +870,9 @@ async def gpu_ws(ws: WebSocket):
     gpu_registry[gpu_id] = {
         "ws": ws,
         "name": register_msg.get("name") or requested_gpu_id,
-        "model": register_msg.get("model"),
+        "model": register_msg.get("model") or (
+            "ltx-2.3" if "ltx" in requested_gpu_id.lower() else None
+        ),
         "supported_models": register_msg.get("supported_models") or register_msg.get("models"),
         "metadata": {
             key: value for key, value in register_msg.items()
