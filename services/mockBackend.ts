@@ -148,6 +148,18 @@ export const mockBackend = {
     return await response.json();
   },
 
+  async setAdminUserPermissions(token: string, userId: string, permissions: Record<string, boolean>): Promise<void> {
+    const response = await fetch(`${API_BASE}/admin/users/${userId}/permissions`, {
+      method: 'PATCH',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ permissions })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to update permissions');
+    }
+  },
+
   async deleteHistoryItem(token: string, id: string): Promise<void> {
     const response = await fetch(`${API_BASE}/history/${id}`, {
       method: 'DELETE',

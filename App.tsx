@@ -60,6 +60,18 @@ const AppContent: React.FC = () => {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const isQuantView = currentView === AppView.QUANTITATIVE_ANALYSIS;
 
+  const viewPermission: Partial<Record<AppView, string>> = {
+    [AppView.CHAT]: 'chat', [AppView.IMAGE]: 'image', [AppView.VIDEO]: 'video',
+    [AppView.AUDIO]: 'audio', [AppView.TEXT_ANALYSIS]: 'text',
+    [AppView.AMAZON_POLLUTION]: 'geo', [AppView.QUANTITATIVE_ANALYSIS]: 'fund',
+    [AppView.HISTORY]: 'history',
+  };
+  const hasViewAccess = (view: AppView) => {
+    if (!user || user.role === 'super_admin') return true;
+    const permission = viewPermission[view];
+    return !permission || user.module_permissions?.[permission as keyof typeof user.module_permissions] !== false;
+  };
+
   const tools: ToolConfig[] = [
     { id: AppView.CHAT, name: t('nav.chat'), description: t('nav.chat.desc'), icon: MessageSquare, color: 'text-indigo-400' },
     { id: AppView.IMAGE, name: t('nav.image'), description: t('nav.image.desc'), icon: ImageIcon, color: 'text-purple-400' },
@@ -100,6 +112,9 @@ const AppContent: React.FC = () => {
   }, [currentView]);
 
   const renderContent = () => {
+    if (!hasViewAccess(currentView)) {
+      return <div className="h-full flex items-center justify-center text-center"><div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-10"><ShieldCheck className="mx-auto text-red-400 mb-3" /><div className="font-bold text-app-text">该板块未授权</div><div className="text-xs text-app-subtext mt-1">请联系管理员开通使用权限</div></div></div>;
+    }
     switch (currentView) {
       case AppView.CHAT: return <ChatTool />;
       case AppView.IMAGE: return <ImageTool />;
@@ -123,7 +138,7 @@ const AppContent: React.FC = () => {
             <div className="w-full max-w-6xl px-4">
               <h2 className="text-[10px] md:text-sm font-bold text-app-subtext uppercase tracking-[0.3em] mb-4 md:mb-8 text-center">{t('app.modules')}</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
-                {tools.filter(t => t.id !== AppView.HISTORY && t.id !== AppView.ADMIN).map((tool) => (
+                {tools.filter(t => t.id !== AppView.HISTORY && t.id !== AppView.ADMIN && hasViewAccess(t.id)).map((tool) => (
                   <button key={tool.id} onClick={() => setCurrentView(tool.id)} className="group bg-app-surface/40 hover:bg-app-surface border border-app-border p-4 md:p-6 rounded-2xl md:rounded-3xl transition-all hover:-translate-y-1 hover:border-app-accent/30 text-center relative overflow-hidden backdrop-blur-sm">
                     <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-app-base flex items-center justify-center mx-auto mb-3 md:mb-4 ${tool.color} group-hover:scale-110 transition-transform`}><tool.icon size={20} /></div>
                     <h3 className="text-sm md:text-base font-bold text-app-text mb-1 truncate">{tool.name}</h3>
@@ -175,7 +190,7 @@ const AppContent: React.FC = () => {
       <aside className={`fixed lg:static inset-y-0 left-0 z-[70] w-64 bg-app-surface border-r border-app-border transform transition-transform duration-300 ease-in-out flex flex-col shrink-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <div className="h-20 flex items-center px-6 border-b border-app-border"><Logo size="sm" /><button onClick={() => setIsSidebarOpen(false)} className="lg:hidden ml-auto text-app-subtext"><X size={24} /></button></div>
         <nav className="flex-1 px-3 py-6 space-y-1 overflow-y-auto"><button onClick={() => { setCurrentView(AppView.DASHBOARD); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${currentView === AppView.DASHBOARD ? 'bg-app-accent text-white shadow-lg shadow-app-accent/20' : 'text-app-subtext hover:bg-app-surface-hover hover:text-app-text'}`}><LayoutDashboard size={20} /><span className="font-medium">{t('nav.dashboard')}</span></button><div className="pt-6 pb-3 px-4 text-xs font-bold text-app-subtext uppercase tracking-widest">{t('app.modules')}</div>
-          {tools.map((tool) => (
+          {tools.filter((tool) => hasViewAccess(tool.id)).map((tool) => (
             <button key={tool.id} onClick={() => { setCurrentView(tool.id); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${currentView === tool.id ? 'bg-app-surface-hover text-app-text border border-app-border shadow-md' : 'text-app-subtext hover:bg-app-surface-hover hover:text-app-text'}`}><tool.icon size={20} className={currentView === tool.id ? tool.color : ''} /><span className="font-medium">{tool.name}</span></button>
           ))}</nav>
         <div className="p-4 border-t border-app-border"><p className="text-[10px] text-app-subtext font-mono text-center opacity-50">{t('app.icp')}</p></div>

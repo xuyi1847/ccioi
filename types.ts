@@ -32,6 +32,7 @@ export interface User {
   avatar?: string;
   role: 'user' | 'super_admin';
   enabled: boolean;
+  module_permissions: Record<'chat' | 'image' | 'video' | 'audio' | 'text' | 'geo' | 'fund' | 'history', boolean>;
 }
 
 export interface Message {

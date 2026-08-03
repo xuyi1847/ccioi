@@ -7,6 +7,12 @@ from contextlib import contextmanager
 from typing import Any, Optional
 
 
+DEFAULT_MODULE_PERMISSIONS = {
+    "chat": True, "image": True, "video": True, "audio": True,
+    "text": True, "geo": True, "fund": True, "history": True,
+}
+
+
 def _database_url() -> str:
     value = os.getenv("DATABASE_URL", "").strip()
     if not value:
@@ -45,6 +51,7 @@ def init_database() -> None:
             balance NUMERIC(14, 2) NOT NULL DEFAULT 0,
             role TEXT NOT NULL DEFAULT 'user',
             enabled BOOLEAN NOT NULL DEFAULT TRUE,
+            module_permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
             invite_code TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -52,6 +59,7 @@ def init_database() -> None:
         """,
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user'",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS module_permissions JSONB NOT NULL DEFAULT '{}'::jsonb",
         """
         CREATE TABLE IF NOT EXISTS operation_logs (
             id BIGSERIAL PRIMARY KEY,
@@ -129,6 +137,7 @@ def public_user(row: dict) -> dict:
         "balance": float(row["balance"]),
         "role": row.get("role", "user"),
         "enabled": row.get("enabled", True),
+        "module_permissions": {**DEFAULT_MODULE_PERMISSIONS, **(row.get("module_permissions") or {})},
     }
 
 
@@ -171,7 +180,7 @@ def list_users() -> list[dict]:
         with conn.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT u.id, u.email, u.name, u.role, u.enabled, u.balance,
+                SELECT u.id, u.email, u.name, u.role, u.enabled, u.module_permissions, u.balance,
                        u.invite_code, u.created_at, COUNT(l.id) AS operation_count,
                        MAX(l.created_at) AS last_active_at
                 FROM users u LEFT JOIN operation_logs l ON l.user_id = u.id
@@ -180,6 +189,7 @@ def list_users() -> list[dict]:
             )
             return [
                 {**dict(row), "id": str(row["id"]), "balance": float(row["balance"]),
+                 "module_permissions": {**DEFAULT_MODULE_PERMISSIONS, **(row["module_permissions"] or {})},
                  "created_at": row["created_at"].isoformat(),
                  "last_active_at": row["last_active_at"].isoformat() if row["last_active_at"] else None}
                 for row in cursor.fetchall()
@@ -196,6 +206,21 @@ def set_user_enabled(user_id: str, enabled: bool) -> Optional[dict]:
                 RETURNING *
                 """,
                 (enabled, user_id),
+            )
+            return cursor.fetchone()
+
+
+def set_user_module_permissions(user_id: str, permissions: dict[str, bool]) -> Optional[dict]:
+    normalized = {key: bool(permissions.get(key, True)) for key in DEFAULT_MODULE_PERMISSIONS}
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE users SET module_permissions = %s::jsonb, updated_at = NOW()
+                WHERE id = %s AND role <> 'super_admin'
+                RETURNING *
+                """,
+                (json.dumps(normalized), user_id),
             )
             return cursor.fetchone()
 

@@ -20,6 +20,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     checkUser();
+    const timer = window.setInterval(checkUser, 30000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const checkUser = async () => {

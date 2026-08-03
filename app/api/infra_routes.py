@@ -55,6 +55,7 @@ from app.database import (
     save_geo_report,
     save_user_config,
     set_user_enabled,
+    set_user_module_permissions,
     verify_password,
 )
 from app.local_storage import (
@@ -182,6 +183,10 @@ class LoginReq(BaseModel):
 
 class UserStatusReq(BaseModel):
     enabled: bool
+
+
+class UserPermissionsReq(BaseModel):
+    permissions: dict[str, bool]
 
 
 class UserConfigReq(BaseModel):
@@ -788,6 +793,19 @@ async def admin_user_operations(user_id: str, limit: int = 500, admin: dict = De
         raise HTTPException(status_code=404, detail="User not found")
     return list_operation_logs(limit, user_id)
 
+
+@router.patch("/admin/users/{user_id}/permissions")
+async def admin_user_permissions(user_id: str, req: UserPermissionsReq, admin: dict = Depends(require_super_admin)):
+    target = get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.get("role") == "super_admin":
+        raise HTTPException(status_code=400, detail="Super administrator permissions cannot be restricted")
+    updated = set_user_module_permissions(user_id, req.permissions)
+    if not updated:
+        raise HTTPException(status_code=400, detail="Unable to update permissions")
+    return public_user(updated)
+
 @router.delete("/history/{task_id}")
 async def delete_history_item(task_id: str, user: dict = Depends(get_user_from_auth)):
     """
@@ -1048,6 +1066,11 @@ async def frontend_ws(ws: WebSocket):
             active_user = get_user_by_id(ws_user_id)
             if not active_user or not active_user.get("enabled", True):
                 await ws.send_text(json.dumps({"type": "TASK_REJECTED", "message": "Account is disabled"}))
+                continue
+            permissions = active_user.get("module_permissions") or {}
+            requested_module = "geo" if data.get("task") == "AMAZON_POLLUTION" else "video"
+            if permissions.get(requested_module, True) is False:
+                await ws.send_text(json.dumps({"type": "TASK_REJECTED", "message": f"{requested_module} module access denied"}))
                 continue
             # =========================================================
             # AMAZON POLLUTION (真实 Rufus 调用版本)
