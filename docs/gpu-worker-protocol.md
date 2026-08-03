@@ -24,6 +24,9 @@ The server dispatches a model-independent payload:
   "user_id": "...",
   "model": "ltx-2.3",
   "prompt": "...",
+  "image_url": "https://www.ccioi.com/api/storage/uploads/input.jpg",
+  "image_frame": 0,
+  "image_strength": 0.8,
   "width": 768,
   "height": 512,
   "num_frames": 121,
@@ -31,6 +34,9 @@ The server dispatches a model-independent payload:
   "seed": 42
 }
 ```
+
+For LTX image-to-video tasks, `image_url`, `image_frame`, and
+`image_strength` are included. These fields are omitted for text-to-video.
 
 The Worker owns model paths and translates these fields into its local command:
 

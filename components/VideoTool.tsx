@@ -53,6 +53,8 @@ const VideoTool: React.FC = () => {
   const [motionScore, setMotionScore] = useState(6);
   const [refImage, setRefImage] = useState<string | null>(null);
   const [refImageUrl, setRefImageUrl] = useState<string | null>(null);
+  const [imageFrame, setImageFrame] = useState(0);
+  const [imageStrength, setImageStrength] = useState(0.8);
   const [isUploading, setIsUploading] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
   
@@ -148,7 +150,7 @@ const VideoTool: React.FC = () => {
             const newRecord: HistoryRecord = {
               id: data.task_id || Date.now().toString(),
               type: 'video', prompt, url: data.output.public_url, timestamp: Date.now(),
-              params: { model: videoModel, config: configFile, cond: condType, steps: numSteps, frames: numFrames, width, height, fps, seed, nproc_per_node: nprocPerNode, motion_score: motionScore }
+              params: { model: videoModel, config: configFile, cond: condType, steps: numSteps, frames: numFrames, width, height, fps, seed, nproc_per_node: nprocPerNode, motion_score: motionScore, image_url: refImageUrl, image_frame: imageFrame, image_strength: imageStrength }
             };
             const existingHistory = JSON.parse(localStorage.getItem('ccioi_video_history') || '[]');
             localStorage.setItem('ccioi_video_history', JSON.stringify([newRecord, ...existingHistory]));
@@ -161,7 +163,7 @@ const VideoTool: React.FC = () => {
         }
       } catch (e) {}
     }
-  }, [lastMessage, prompt, videoModel, configFile, condType, numSteps, numFrames, width, height, fps, seed, nprocPerNode, motionScore, disconnect, notify]);
+  }, [lastMessage, prompt, videoModel, configFile, condType, numSteps, numFrames, width, height, fps, seed, nprocPerNode, motionScore, refImageUrl, imageFrame, imageStrength, disconnect, notify]);
 
   const handleOptimize = async () => {
     if (!prompt.trim() || isOptimizing) return;
@@ -199,6 +201,7 @@ const VideoTool: React.FC = () => {
   const handleDispatch = async () => {
     if (!user) { notify.error("Authorization required."); return; }
     if (isUploading) { notify.warning("Asset sync in progress..."); return; }
+    if (refImage && !refImageUrl) { notify.error("图片尚未上传成功，请重新选择图片。"); return; }
     setIsGenerating(true);
     setGeneratedVideoUrl(null);
     setLogs([]);
@@ -208,7 +211,15 @@ const VideoTool: React.FC = () => {
         type: 'TASK_EXECUTION', task: 'VIDEO_GENERATION', token: user.token, timestamp: new Date().toISOString(),
         model: videoModel,
         preferred_gpu_id: selectedGpuId || undefined,
-        parameters: { model: videoModel, prompt, config: configFile, cond: condType, steps: numSteps, frames: numFrames, num_frames: numFrames, ratio: aspectRatio, width, height, fps, seed, nproc_per_node: nprocPerNode, motion_score: motionScore, ref_image: refImageUrl }
+        parameters: {
+          model: videoModel, prompt, config: configFile, cond: condType, steps: numSteps,
+          frames: numFrames, num_frames: numFrames, ratio: aspectRatio, width, height, fps,
+          seed, nproc_per_node: nprocPerNode, motion_score: motionScore,
+          ref_image: refImageUrl,
+          image_url: videoModel === 'ltx-2.3' ? refImageUrl : undefined,
+          image_frame: videoModel === 'ltx-2.3' && refImageUrl ? imageFrame : undefined,
+          image_strength: videoModel === 'ltx-2.3' && refImageUrl ? imageStrength : undefined,
+        }
       });
       notify.info("Task dispatched to CCIOI Cluster.");
     } catch (err) {
@@ -318,14 +329,20 @@ const VideoTool: React.FC = () => {
                     <select value={condType} onChange={(e) => setCondType(e.target.value)} className="w-full bg-app-base border border-app-border rounded-lg p-1.5 text-[10px] text-app-text outline-none disabled:opacity-50" disabled={!refImage && condType === 'None'}>{COND_TYPES.map(t => <option key={t} value={t} disabled={t !== 'None' && !refImage}>{t}</option>)}</select>
                   </div>
                 </div>
-                <div><label className="block text-[10px] font-bold text-app-subtext uppercase tracking-widest mb-1.5">{t('tool.video.ref_image')}</label>
-                  <div onClick={() => !refImage && !isUploading && fileInputRef.current?.click()} className="aspect-video bg-app-base border border-dashed border-app-border rounded-xl flex items-center justify-center cursor-pointer overflow-hidden group">
-                    {isUploading ? <div className="flex flex-col items-center gap-1"><Loader2 className="animate-spin text-cyan-400" size={16} /><span className="text-[8px] text-app-subtext uppercase font-bold">Uploading</span></div> :
-                      refImage ? <div className="relative w-full h-full"><img src={refImage} className="w-full h-full object-cover" /><button onClick={(e) => {e.stopPropagation(); setRefImage(null); setRefImageUrl(null);}} className="absolute top-1.5 right-1.5 p-1 bg-black/60 rounded-full text-red-400"><Trash2 size={12}/></button></div> : <ImageIcon className="text-app-subtext opacity-20" size={20} />}
-                    <input type="file" ref={fileInputRef} onChange={handleImageUpload} className="hidden" accept="image/*" />
-                  </div>
-                </div>
               </>
+            )}
+            <div><label className="block text-[10px] font-bold text-app-subtext uppercase tracking-widest mb-1.5">{videoModel === 'ltx-2.3' ? '图生视频（可选）' : t('tool.video.ref_image')}</label>
+              <div onClick={() => !refImage && !isUploading && fileInputRef.current?.click()} className="aspect-video bg-app-base border border-dashed border-app-border rounded-xl flex items-center justify-center cursor-pointer overflow-hidden group">
+                {isUploading ? <div className="flex flex-col items-center gap-1"><Loader2 className="animate-spin text-cyan-400" size={16} /><span className="text-[8px] text-app-subtext uppercase font-bold">正在上传</span></div> :
+                  refImage ? <div className="relative w-full h-full"><img src={refImage} alt="图生视频参考图" className="w-full h-full object-contain" /><button onClick={(e) => {e.stopPropagation(); setRefImage(null); setRefImageUrl(null); if (fileInputRef.current) fileInputRef.current.value = '';}} className="absolute top-1.5 right-1.5 p-1 bg-black/60 rounded-full text-red-400"><Trash2 size={12}/></button></div> : <div className="flex flex-col items-center gap-2 text-app-subtext"><ImageIcon className="opacity-30" size={22} /><span className="text-[9px]">点击上传参考图片</span></div>}
+                <input type="file" ref={fileInputRef} onChange={handleImageUpload} className="hidden" accept="image/*" />
+              </div>
+            </div>
+            {videoModel === 'ltx-2.3' && refImage && (
+              <div className="grid grid-cols-2 gap-2.5 p-2.5 bg-cyan-500/5 rounded-xl border border-cyan-500/20">
+                <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">图片帧位置</label><input type="number" min={0} max={Math.max(0, numFrames - 1)} value={imageFrame} onChange={e => setImageFrame(Math.min(Math.max(0, parseInt(e.target.value) || 0), Math.max(0, numFrames - 1)))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
+                <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">图片强度</label><input type="number" min={0} max={1} step={0.05} value={imageStrength} onChange={e => setImageStrength(Math.min(1, Math.max(0, Number(e.target.value) || 0)))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
+              </div>
             )}
             <div className="grid grid-cols-2 gap-2.5 p-2.5 bg-app-base/30 rounded-xl border border-app-border">
               <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.frames')}</label><input type="number" value={numFrames} onChange={e => setNumFrames(parseInt(e.target.value))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>

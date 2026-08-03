@@ -1078,6 +1078,14 @@ async def frontend_ws(ws: WebSocket):
                 "fps": int(parameters.get("fps") or 24),
                 "seed": int(parameters.get("seed") or 42),
             }
+            # LTX 图生视频字段为可选；没有 image_url 时仍按文生视频执行。
+            image_url = parameters.get("image_url")
+            if model == "ltx-2.3" and image_url:
+                worker_payload.update({
+                    "image_url": str(image_url),
+                    "image_frame": max(0, int(parameters.get("image_frame") or 0)),
+                    "image_strength": min(1.0, max(0.0, float(parameters.get("image_strength", 0.8)))),
+                })
             # 老 OpenSora Worker 仍从 command 执行；新 Worker 可直接消费上述统一字段。
             if command:
                 worker_payload["command"] = command
