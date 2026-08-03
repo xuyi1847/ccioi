@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Video, Play, ImageIcon, Trash2, Cpu, Link, Globe, Wifi, WifiOff, Loader2, Download, Terminal, ChevronDown, ChevronUp, Lock, Sparkles } from 'lucide-react';
+import { Video, Play, ImageIcon, Trash2, Cpu, Link, Globe, Wifi, WifiOff, Loader2, Download, Terminal, ChevronDown, ChevronUp, Lock, Sparkles, RefreshCw } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
@@ -57,6 +57,7 @@ const VideoTool: React.FC = () => {
   const [gpuNodes, setGpuNodes] = useState<GpuNode[]>([]);
   const [selectedGpuId, setSelectedGpuId] = useState('');
   const [isLoadingGpus, setIsLoadingGpus] = useState(false);
+  const [gpuRefreshKey, setGpuRefreshKey] = useState(0);
   const [activeGpuId, setActiveGpuId] = useState('');
   const API_BASE = ((import.meta as any).env?.VITE_API_BASE || '/api').replace(/\/$/, '');
   
@@ -99,7 +100,7 @@ const VideoTool: React.FC = () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [user?.token, API_BASE]);
+  }, [user?.token, API_BASE, gpuRefreshKey]);
 
   useEffect(() => {
     if (lastMessage) {
@@ -208,30 +209,55 @@ const VideoTool: React.FC = () => {
             <div className="bg-app-base/50 p-2.5 rounded-xl border border-app-border"><label className="text-[9px] text-app-subtext uppercase font-bold block mb-1">Runner URL</label>
               <div className="flex gap-2"><input type="text" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} className="flex-1 bg-transparent text-[10px] text-app-text outline-none" placeholder="ws://..." /><Link size={10} className="text-app-subtext" /></div>
             </div>
-            <div className="bg-app-base/50 p-2.5 rounded-xl border border-app-border">
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-[9px] text-app-subtext uppercase font-bold">GPU Node</label>
-                <span className="text-[8px] text-app-subtext">{gpuNodes.filter((node) => node.status === 'idle').length} idle / {gpuNodes.length} online</span>
-              </div>
-              <select
-                value={selectedGpuId}
-                onChange={(event) => setSelectedGpuId(event.target.value)}
-                disabled={isGenerating || isLoadingGpus}
-                className="w-full bg-app-surface border border-app-border rounded-lg p-2 text-[10px] text-app-text outline-none focus:border-cyan-500 disabled:opacity-50"
-              >
-                <option value="">Auto select an idle GPU</option>
-                {gpuNodes.map((node) => (
-                  <option key={node.id} value={node.id} disabled={node.status !== 'idle'}>
-                    {node.name === node.id ? node.id : `${node.name} (${node.id})`} · {node.status.toUpperCase()}
-                  </option>
-                ))}
-              </select>
-              {selectedGpuId && (
-                <div className="mt-1.5 text-[8px] text-cyan-400 flex items-center gap-1">
-                  <span className={`w-1.5 h-1.5 rounded-full ${gpuNodes.find((node) => node.id === selectedGpuId)?.status === 'idle' ? 'bg-green-400' : 'bg-amber-400'}`} />
-                  Selected: {selectedGpuId}
+            <div className="bg-cyan-500/5 p-3 rounded-2xl border border-cyan-500/30 shadow-lg shadow-cyan-950/20">
+              <div className="flex items-center justify-between mb-2.5">
+                <div>
+                  <label className="text-[11px] text-cyan-300 font-bold flex items-center gap-1.5"><Cpu size={13} /> 选择生成 GPU</label>
+                  <div className="text-[8px] text-app-subtext mt-0.5">{gpuNodes.filter((node) => node.status === 'idle').length} 台空闲 / {gpuNodes.length} 台已连接</div>
                 </div>
-              )}
+                <button
+                  type="button"
+                  onClick={() => setGpuRefreshKey((value) => value + 1)}
+                  disabled={isLoadingGpus}
+                  className="p-1.5 rounded-lg border border-cyan-500/20 text-cyan-400 hover:bg-cyan-500/10 disabled:opacity-40"
+                  title="刷新 GPU 列表"
+                >
+                  <RefreshCw size={12} className={isLoadingGpus ? 'animate-spin' : ''} />
+                </button>
+              </div>
+              <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar">
+                <button
+                  type="button"
+                  onClick={() => setSelectedGpuId('')}
+                  disabled={isGenerating}
+                  className={`w-full flex items-center justify-between rounded-xl border px-3 py-2 text-left transition-all ${selectedGpuId === '' ? 'border-cyan-400 bg-cyan-500/15 text-cyan-200' : 'border-app-border bg-app-base/60 text-app-subtext hover:border-cyan-500/40'}`}
+                >
+                  <span className="text-[10px] font-bold">自动选择空闲 GPU</span>
+                  <span className={`w-2 h-2 rounded-full border ${selectedGpuId === '' ? 'bg-cyan-400 border-cyan-300' : 'border-app-subtext'}`} />
+                </button>
+                {gpuNodes.map((node) => {
+                  const available = node.status === 'idle';
+                  const selected = selectedGpuId === node.id;
+                  return (
+                    <button
+                      type="button"
+                      key={node.id}
+                      onClick={() => available && setSelectedGpuId(node.id)}
+                      disabled={isGenerating || !available}
+                      className={`w-full flex items-center justify-between rounded-xl border px-3 py-2 text-left transition-all ${selected ? 'border-cyan-400 bg-cyan-500/15' : 'border-app-border bg-app-base/60'} ${available ? 'hover:border-cyan-500/40' : 'opacity-45 cursor-not-allowed'}`}
+                    >
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-bold text-app-text truncate">{node.name === node.id ? node.id : `${node.name} (${node.id})`}</div>
+                        <div className="text-[8px] text-app-subtext mt-0.5">{node.status === 'idle' ? '空闲' : node.status === 'busy' ? '生成中' : '离线'}</div>
+                      </div>
+                      <span className={`w-2 h-2 rounded-full border shrink-0 ${selected ? 'bg-cyan-400 border-cyan-300' : available ? 'bg-green-400 border-green-300' : node.status === 'busy' ? 'bg-amber-400 border-amber-300' : 'bg-slate-500 border-slate-400'}`} />
+                    </button>
+                  );
+                })}
+                {!isLoadingGpus && gpuNodes.length === 0 && (
+                  <div className="rounded-xl border border-dashed border-app-border px-3 py-3 text-center text-[9px] text-app-subtext">暂无 GPU 节点连接</div>
+                )}
+              </div>
             </div>
             <div><div className="flex items-center justify-between mb-1.5"><label className="block text-[10px] font-bold text-app-subtext uppercase tracking-widest">{t('tool.video.prompt')}</label>
                 <button onClick={handleOptimize} disabled={!prompt.trim() || isOptimizing} className="flex items-center gap-1.5 text-[9px] font-bold text-cyan-400 hover:text-white disabled:opacity-30 uppercase">{isOptimizing ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}Optimize</button>
