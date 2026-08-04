@@ -218,6 +218,10 @@ class DramaExportReq(BaseModel):
     shot_urls: list[str]
 
 
+class DramaEndingFrameReq(BaseModel):
+    video_url: str
+
+
 class UserConfigReq(BaseModel):
     data: dict[str, Any]
     partial: bool = False
@@ -389,6 +393,32 @@ async def export_drama(req: DramaExportReq, auth: dict = Depends(get_user_from_a
         return {"id": export_id, "public_url": local_public_url(f"videos/{export_id}.mp4")}
     finally:
         concat_file.unlink(missing_ok=True)
+
+
+@router.post("/drama/ending-frame")
+async def drama_ending_frame(req: DramaEndingFrameReq, auth: dict = Depends(get_user_from_auth)):
+    filename = os.path.basename(urlparse(req.video_url).path)
+    task_id = filename[:-4] if filename.endswith(".mp4") else ""
+    if not task_id or safe_id(task_id, "task_id") != task_id:
+        raise HTTPException(status_code=400, detail="Invalid shot video URL")
+    owned_tasks = {str(item.get("id")) for item in read_user_history(auth["sub"])}
+    if task_id not in owned_tasks:
+        raise HTTPException(status_code=404, detail="Shot video not found")
+    source = STORAGE_ROOT / "videos" / filename
+    if not source.is_file():
+        raise HTTPException(status_code=404, detail="Shot video is missing")
+    frame_key = f"uploads/{task_id}-ending.jpg"
+    destination = STORAGE_ROOT / frame_key
+    process = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-y", "-sseof", "-0.08", "-i", str(source), "-frames:v", "1",
+        "-q:v", "2", str(destination), stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await process.communicate()
+    if process.returncode != 0 or not destination.is_file():
+        destination.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail=f"Ending frame extraction failed: {stderr.decode(errors='ignore')[-300:]}")
+    return {"public_url": local_public_url(frame_key)}
 
 
 @router.post("/chat")

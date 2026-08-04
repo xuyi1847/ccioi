@@ -169,6 +169,15 @@ export const mockBackend = {
     return (await response.json()).public_url;
   },
 
+  async extractDramaEndingFrame(token: string, videoUrl: string): Promise<string> {
+    const response = await fetch(`${API_BASE}/drama/ending-frame`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ video_url: videoUrl })
+    });
+    if (!response.ok) { const error = await response.json(); throw new Error(error.detail || '尾帧提取失败'); }
+    return (await response.json()).public_url;
+  },
+
   async getAdminOperations(token: string): Promise<any[]> {
     const response = await fetch(`${API_BASE}/admin/operations?limit=500`, {
       headers: { 'Authorization': `Bearer ${token}` }

@@ -90,6 +90,7 @@ def delete_history(user_id: str, task_id: str) -> None:
     task_id = safe_id(task_id, "task_id")
     (STORAGE_ROOT / "users" / user_id / "meta" / f"{task_id}.json").unlink(missing_ok=True)
     (STORAGE_ROOT / "videos" / f"{task_id}.mp4").unlink(missing_ok=True)
+    (STORAGE_ROOT / "uploads" / f"{task_id}-ending.jpg").unlink(missing_ok=True)
 
 
 def cleanup_storage() -> None:
