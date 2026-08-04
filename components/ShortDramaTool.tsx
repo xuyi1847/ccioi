@@ -7,6 +7,7 @@ import { mockBackend } from '../services/mockBackend';
 import { uploadToOSS } from '../services/ossService';
 
 type Engine = 'ltx-2.3' | 'opensora';
+type SampleKind = 'advert' | 'mv' | 'action' | 'scifi';
 interface Character { id: string; name: string; description: string; reference_url?: string; voice_id?: string; }
 interface Shot { id: string; title: string; scene: string; shot_size: string; camera: string; duration: number; prompt: string; dialogue: string; character_ids: string[]; engine: Engine; status: 'draft' | 'queued' | 'generating' | 'done' | 'failed'; task_id?: string; output_url?: string; ending_frame_url?: string; preview_url?: string; progress?: number; continuity_from_previous?: boolean; seed: number; }
 interface ProjectData { synopsis: string; style: string; aspect_ratio: string; characters: Character[]; script: string; shots: Shot[]; audio_assets: any[]; export_url?: string; }
@@ -56,6 +57,80 @@ const sampleProject = (): Project => {
   };
 };
 
+const shortSampleProject = (kind: SampleKind): Project => {
+  const lead = uid();
+  const partner = uid();
+  const samples: Record<SampleKind, { name: string; synopsis: string; style: string; characters: Character[]; script: string; specs: Array<[string, string, string, string, string, string[], boolean]> }> = {
+    advert: {
+      name: '30秒高级广告·时间有光',
+      synopsis: '一枚黑钛机械腕表陪伴建筑师从黎明图纸走到城市天台。光线在表盘上完成一次日出，表达“时间不是流逝，而是被创造”。',
+      style: '国际奢侈品广告，黑钛、暖金与深蓝三色，微距材质，克制高光，极简建筑空间，35mm变形宽银幕，不生成品牌文字和水印',
+      characters: [{ id: lead, name: '建筑师林拓', description: '32岁中国男性，短黑发，清瘦侧脸，深炭灰高领衫与黑色西装；左腕始终佩戴同一枚圆形黑钛机械表，琥珀色秒针、无文字表盘', voice_id: '' }],
+      script: '《时间有光》30秒腕表广告。黎明前，一枚黑钛腕表在暗处苏醒；建筑师戴上它完成最后一笔图纸，穿过尚未醒来的城市，登上自己设计的大楼。第一束阳光越过天际，落在表盘与建筑轮廓上。旁白：时间不是经过，是被我们留下。',
+      specs: [
+        ['暗处苏醒', '黑色石材桌面', '100mm微距缓慢推近', '', 'One premium product shot only. The same round black titanium mechanical wristwatch rests on dark stone, amber second hand begins one smooth sweep as a narrow warm light crosses the brushed bezel. Photoreal macro texture, deep blacks, precise reflections, no text, no logo, no hands entering frame.', [], false],
+        ['最后一笔', '极简建筑工作室', '手腕近景转焦到图纸', '', 'Clean cut to a minimalist studio before dawn. Lin Tuo draws one final line on a physical architectural plan; the exact black titanium watch with amber second hand is clearly visible on his left wrist. One rack focus from watch to pencil line, cool window light and one warm desk lamp.', [lead], false],
+        ['城市尚未醒来', '蓝调时刻的玻璃街道', '侧面稳定跟拍', '', 'Lin Tuo walks alone through a quiet modern city at blue hour, same charcoal turtleneck, black suit and watch. Camera tracks parallel at waist height; glass facades repeat his silhouette, no traffic, no crowd, restrained luxury commercial movement.', [lead], false],
+        ['登上作品', '摩天楼天台楼梯', '低机位跟随上升', '', 'Direct continuation. He climbs the final concrete stairs toward the rooftop, left hand brushes the rail and the same watch catches a thin line of dawn. Low camera follows one continuous upward action, architecture geometric and monumental.', [lead], true],
+        ['时间有光', '城市日出天台', '腕表近景缓慢拉远至大全景', '旁白：时间不是经过，是被我们留下。', 'Begin on the exact black titanium watch as the amber hand reaches the top. First sunlight crosses the dial; camera slowly pulls back to reveal Lin Tuo overlooking the skyline and the building shaped like his plan. Warm sunrise, elegant silhouette, final premium hero image, no text or logo.', [lead], true],
+      ],
+    },
+    mv: {
+      name: '30秒电影MV·雨停以前',
+      synopsis: '女歌手在末班地铁追逐一段错过的感情。雨水、车窗倒影与红围巾贯穿五个镜头，最后两人在空站台隔着车门短暂相望。',
+      style: '电影感都市音乐录像，午夜蓝与钨丝橙，真实雨水、湿润胶片颗粒、缓慢节奏与节拍剪辑，人物表演克制，统一红色围巾视觉锚点',
+      characters: [
+        { id: lead, name: '夏遥', description: '26岁中国女歌手，黑色齐肩湿发，细长脸，银色耳钉；始终穿黑色长风衣、白衬衫和暗红色长围巾，克制忧伤', voice_id: '' },
+        { id: partner, name: '周屿', description: '28岁中国男性，短黑发，瘦高，深蓝夹克与灰色针织衫；安静内敛，不更换服装', voice_id: '' },
+      ],
+      script: '《雨停以前》30秒MV。夏遥冒雨冲进末班地铁，车窗倒影里闪过与周屿分开的记忆。她在空车厢唱出一句告别；列车进站时，她发现周屿就在对面站台。门即将关闭，两人没有奔跑，只隔着雨痕玻璃看见彼此。',
+      specs: [
+        ['雨夜入口', '午夜地铁入口', '手持侧后方跟拍', '', 'Xia Yao runs down wet subway stairs at midnight, black coat and the same long dark-red scarf trailing behind. One continuous action, rain glows under amber street lamps, handheld but controlled, cinematic 35mm grain, no crowd.', [lead], false],
+        ['倒影重叠', '末班地铁空车厢', '车窗侧面近景', '夏遥轻唱：如果雨停了，你还会记得吗？', 'Inside an almost empty subway car. Xia Yao sits beside the rain-streaked window; her face and red scarf reflect twice in the dark glass while tunnel lights pass rhythmically. She sings one quiet Mandarin line, subtle lip movement, locked profile composition.', [lead], false],
+        ['旧日一秒', '车窗倒影中的站台记忆', '匹配剪辑，慢速推近', '', 'Match cut from her reflection to Zhou Yu standing alone on a blue-toned platform in the recent past, same navy jacket and gray knit. He releases the end of her red scarf from his hand; only this single restrained gesture, shallow focus, no melodrama.', [lead, partner], false],
+        ['隔站相望', '终点站双侧站台', '车内越肩看向对面', '', 'Return to the present. From behind Xia Yao inside the stopped train, Zhou Yu appears across the opposite platform in the exact same clothes. They notice each other and become still. The red scarf anchors foreground; cool station geometry, one slow push-in.', [lead, partner], false],
+        ['门合上之前', '列车门与站台之间', '对称双人构图', '夏遥轻唱：那就别等雨停。', 'Direct continuation. Train doors begin to close between their aligned faces; neither runs. Zhou Yu gives the smallest relieved smile as Xia Yao finishes one short lyric. Doors meet, her red scarf reflection remains on the glass for the final beat, elegant unresolved ending.', [lead, partner], true],
+      ],
+    },
+    action: {
+      name: '30秒动作大片·零点快递',
+      synopsis: '女骑手必须在零点前把一枚量子钥匙送过封锁大桥。无人机追击、摩托滑行与近身交接集中在一个夜雨场景，动作方向始终统一。',
+      style: '高预算近未来动作电影，夜雨、青灰城市与橙色尾灯，真实特技和重量感，动作轴线统一从画面左向右，避免碎剪与无意义爆炸',
+      characters: [
+        { id: lead, name: '陆岚', description: '30岁中国女性快递骑手，短黑发，右眉小疤；黑色防水机车服、窄橙色肩带、哑光黑半盔，驾驶同一辆黑色电动摩托，后轮橙色光环', voice_id: '' },
+        { id: partner, name: '陈默', description: '35岁中国男性安全员，寸头，深灰战术风衣，左手黑色机械手套；始终站在桥东检查站', voice_id: '' },
+      ],
+      script: '《零点快递》30秒动作预告。陆岚携量子钥匙冲上封锁大桥，两架无人机锁定她。她利用失控货车完成贴地滑行，躲过扫描并把钥匙滑向检查站。陈默在倒计时归零前接住钥匙，大桥防线瞬间重启。',
+      specs: [
+        ['冲上封锁桥', '雨夜跨海大桥西端', '低机位平行追车', '陆岚：包裹到，人就到。', 'Lu Lan accelerates the same black electric motorcycle from screen left to right onto a rain-soaked suspended bridge. Orange rear wheel ring and shoulder strap are the only warm colors. Low parallel tracking, heavy tire spray, realistic speed and weight, one action.', [lead], false],
+        ['无人机锁定', '大桥中央车道', '摩托前方反向稳定拍摄', '', 'Direct continuation with identical travel direction. Two angular black pursuit drones descend behind Lu Lan and cast thin red scanning lines across wet asphalt. She lowers her body once over the motorcycle; no shooting yet, bridge cables streak past.', [lead], true],
+        ['货车横停', '桥面事故区', '长焦压缩空间后侧滑', '', 'A driverless cargo truck jackknifes across the lane ahead. Lu Lan performs one controlled low slide beneath its raised trailer, motorcycle and body staying physically connected, sparks brief and realistic. Camera holds the left-to-right axis, no impossible flips.', [lead], true],
+        ['钥匙滑行', '桥东检查站前', '地面追随金属盒', '陆岚：接住！', 'She exits the slide, removes one palm-sized silver case from her orange shoulder strap and sends it skimming across wet pavement toward screen right. Camera follows only the case past her motorcycle as drones close in behind, clear spatial geography.', [lead, partner], true],
+        ['零点接力', '桥东检查站', '手部特写拉远至防线亮起', '陈默：准时。', 'Chen Mo’s black mechanical glove catches the sliding silver case exactly before a physical countdown reaches zero. He inserts it once into the checkpoint console; orange defense lights race across bridge cables and disable both drones in the distance. Pull back to a clean hero wide shot, rain continuing.', [lead, partner], true],
+      ],
+    },
+    scifi: {
+      name: '30秒科幻大片·冰下日出',
+      synopsis: '欧罗巴冰下，两个科考员发现整片海洋是一个生命。为了阻止灭菌，他们主动失联；在氧气耗尽前，海洋以一场从未存在过的日出回应。',
+      style: '作者型硬科幻大片，象牙白潜航器、琥珀舱灯与青色生命光，宏大留白、真实水体、克制表演、35mm变形宽银幕',
+      characters: [
+        { id: lead, name: '苏弥', description: '34岁中国女性生物学家，黑色齐下颌短发，左眼下浅痣；炭灰科考服、琥珀领边、胸前银色录音器', voice_id: '' },
+        { id: partner, name: '贺川', description: '39岁中国男性驾驶员，短黑发夹少量灰，下巴短胡茬；深海军蓝驾驶服、右肩象牙白圆形徽章、黑色薄手套', voice_id: '' },
+      ],
+      script: '《冰下日出》30秒科幻短片。潜航器在欧罗巴黑海收到有规律的光脉，追随它看见覆盖整片海洋的生命。灭菌协议启动，两人烧毁返航天线保护它。动力耗尽后，海洋托起潜航器，在冰层上下点亮青色与金色的第一次日出。',
+      specs: [
+        ['黑海回应', '欧罗巴冰下黑色海洋', '外景极远景缓慢下降', '苏弥旁白：我们以为这里没有生命。', 'The same small ivory submersible Nereid descends beneath Europa ice, circular amber viewport and two short side lights. Three distant cyan pulses answer in the black ocean. Monumental negative space, physically plausible underwater particles, one slow descent.', [], false],
+        ['看见整片海', '巨大球形冰穴', '超广角保持静止', '贺川：那不是一只。', 'Nereid enters an immense ice cavern. One kilometer-wide translucent Möbius ribbon of cyan branching light floats at the center; the tiny ivory craft remains lower left for scale. The organism moves once, slowly and elegantly, premium hard-science-fiction realism.', [], true],
+        ['灭菌协议', '潜航器驾驶舱', '对称双人中景', '苏弥：回去，它就会被烧掉。　贺川：那就不回去。', 'Inside the same compact cockpit, Su Mi left and He Chuan right, charcoal panels and amber practical lights. One red quarantine lamp turns on. They exchange two restrained lines and He Chuan places his gloved hand on a guarded antenna switch, no exaggerated acting.', [lead, partner], false],
+        ['主动失联', '潜航器外景', '近距离侧跟单一动作', '', 'Nereid fires one precise maintenance laser and severs its own dorsal antenna. Brief orange sparks drift into black water while the giant cyan organism remains calm behind it. No explosion, identical hull, one deliberate irreversible action.', [], false],
+        ['冰下日出', '半透明欧罗巴冰层下', '从舷窗缓慢拉远到大全景', '苏弥旁白：于是海洋，为我们升起了太阳。', 'The powerless Nereid is gently lifted by a broad cyan living current to the translucent ice ceiling. Warm reflected Jupiter light filters from above while cyan ocean light rises below, creating a dawn horizon. Camera pulls away; two tiny silhouettes share the amber viewport, poetic complete ending.', [lead, partner], true],
+      ],
+    },
+  };
+  const selected = samples[kind];
+  return { name: selected.name, data: { synopsis: selected.synopsis, style: selected.style, aspect_ratio: '16:9', characters: selected.characters, script: selected.script, audio_assets: [], shots: selected.specs.map(([title, scene, camera, dialogue, prompt, character_ids, continuity_from_previous], index) => ({ id: uid(), title, scene, shot_size: index === 0 || index === 4 ? '全景' : '中近景', camera, duration: 6, engine: 'ltx-2.3', status: 'draft', seed: 8601 + index, character_ids, dialogue, prompt, continuity_from_previous })) } };
+};
+
 const ShortDramaTool: React.FC = () => {
   const { user } = useAuth();
   const { notify } = useNotification();
@@ -83,9 +158,9 @@ const ShortDramaTool: React.FC = () => {
       const items = await mockBackend.getDramaProjects(user.token);
       if (items.length) { setProjects(items); setProject(items[0]); }
       else {
-        const saved = await mockBackend.saveDramaProject(user.token, sampleProject());
+        const saved = await mockBackend.saveDramaProject(user.token, shortSampleProject('scifi'));
         setProjects([saved]); setProject(saved);
-        notify.success('已创建 2 分钟 LTX 高级科幻样片');
+        notify.success('已创建 30 秒 LTX 科幻样片');
       }
     } catch (error: any) { notify.error(error.message); }
     finally { setLoading(false); }
@@ -107,14 +182,14 @@ const ShortDramaTool: React.FC = () => {
   const patchShot = (id: string, patch: Partial<Shot>) => setProject((current) => { if (!current) return current; const next = { ...current, data: { ...current.data, shots: current.data.shots.map((shot) => shot.id === id ? { ...shot, ...patch } : shot) } }; projectRef.current = next; return next; });
 
   const createProject = () => { const next = { name: '未命名短剧', data: emptyData() }; setProject(next); setTab('project'); };
-  const createSample = async () => {
+  const createSample = async (kind: SampleKind) => {
     if (!user) return;
     setSaving(true);
     try {
-      const saved = await mockBackend.saveDramaProject(user.token, sampleProject());
+      const saved = await mockBackend.saveDramaProject(user.token, shortSampleProject(kind));
       setProjects((current) => [saved, ...current]);
       setProject(saved); projectRef.current = saved; setTab('project');
-      notify.success('已载入 2 分钟 LTX 高级科幻样片');
+      notify.success('已载入 30 秒样片');
     } catch (error: any) { notify.error(error.message); }
     finally { setSaving(false); }
   };
@@ -234,7 +309,7 @@ const ShortDramaTool: React.FC = () => {
   return <div className="h-full min-h-0 flex gap-4">
     <aside className="w-56 shrink-0 rounded-2xl border border-app-border bg-app-surface/60 p-3 flex flex-col min-h-0">
       <button onClick={createProject} className="w-full py-2.5 rounded-xl bg-app-accent text-white text-xs font-bold flex items-center justify-center gap-2"><Plus size={14} />新建短剧</button>
-      <button onClick={createSample} disabled={saving} className="w-full mt-2 py-2.5 rounded-xl border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50"><Sparkles size={14} />载入高级科幻样片</button>
+      <div className="grid grid-cols-2 gap-1.5 mt-2">{([['advert','广告'],['mv','MV'],['action','动作'],['scifi','科幻']] as const).map(([kind,label])=><button key={kind} onClick={()=>createSample(kind)} disabled={saving} className="py-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 text-[10px] font-bold disabled:opacity-50"><Sparkles size={11} className="inline mr-1"/>{label} 30s</button>)}</div>
       <div className="flex-1 overflow-y-auto custom-scrollbar mt-3 space-y-2">{projects.map((item) => <button key={item.id} onClick={() => setProject(item)} className={`w-full text-left p-3 rounded-xl border ${project?.id === item.id ? 'border-cyan-400 bg-cyan-500/10' : 'border-app-border hover:bg-app-surface-hover'}`}><div className="text-xs font-bold truncate">{item.name}</div><div className="text-[9px] text-app-subtext mt-1">{item.data.shots?.length || 0} 个镜头</div></button>)}</div>
     </aside>
     <section className="flex-1 min-w-0 min-h-0 flex flex-col rounded-2xl border border-app-border bg-app-surface/40 overflow-hidden">
