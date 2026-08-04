@@ -8,52 +8,50 @@ import { uploadToOSS } from '../services/ossService';
 
 type Engine = 'ltx-2.3' | 'opensora';
 interface Character { id: string; name: string; description: string; reference_url?: string; voice_id?: string; }
-interface Shot { id: string; title: string; scene: string; shot_size: string; camera: string; duration: number; prompt: string; dialogue: string; character_ids: string[]; engine: Engine; status: 'draft' | 'queued' | 'generating' | 'done' | 'failed'; output_url?: string; ending_frame_url?: string; seed: number; }
+interface Shot { id: string; title: string; scene: string; shot_size: string; camera: string; duration: number; prompt: string; dialogue: string; character_ids: string[]; engine: Engine; status: 'draft' | 'queued' | 'generating' | 'done' | 'failed'; output_url?: string; ending_frame_url?: string; continuity_from_previous?: boolean; seed: number; }
 interface ProjectData { synopsis: string; style: string; aspect_ratio: string; characters: Character[]; script: string; shots: Shot[]; audio_assets: any[]; export_url?: string; }
 interface Project { id?: string; name: string; data: ProjectData; updated_at?: string; }
 
 const uid = () => crypto.randomUUID();
 const emptyData = (): ProjectData => ({ synopsis: '', style: '电影感写实', aspect_ratio: '9:16', characters: [], script: '', shots: [], audio_assets: [] });
 const sampleProject = (): Project => {
-  const shen = uid();
-  const yue = uid();
-  const echo = uid();
-  const specs: Array<[string, string, string, string, string, string[]]> = [
-    ['木星归航', '深空与远航舰外景', '超广角缓慢掠过舰体', '沈舟旁白：离开地球三百八十七天，我们终于踏上归途。', 'Opening shot. The same compact Chinese deep-space research ship Qiming-7 glides above Jupiter, recognizable dark graphite hull, white nose section, one amber stripe, twin blue ion engines and the number Q7. Camera slowly flies along the hull toward the cockpit, majestic Jupiter storms below, realistic hard science fiction.', []],
-    ['最后一次点火', '启明七号驾驶舱', '中景从舷窗推向二人', '林玥：燃料只够最后一次点火。　沈舟：一次就够，我们回家。', 'Inside Qiming-7 immediately afterward. Captain Shen Zhou sits left and engineer Lin Yue sits right in the same compact cockpit with curved windows, dark metal panels and amber interface lights. Both wear their fixed navy flight suits. Jupiter fills the window as Lin reports low fuel and Shen answers calmly.', [shen, yue]],
-    ['十七分钟后的信号', '驾驶舱通信台', '警报特写后快速推近屏幕', '回传录音中的沈舟：不要启动主引擎！重复，不要启动！', 'Direct continuation. A red communication alert interrupts the crew. Close-up of the console showing QIMING-7 and a timestamp exactly seventeen minutes in the future. A damaged recording plays in Shen Zhou’s own voice warning them not to ignite the main engine. Red light reflects across both shocked faces.', [shen, yue, echo]],
-    ['验证声纹', '驾驶舱', '双人过肩镜头切全息球', '林玥：这不可能。　回声：声纹匹配沈舟，可信度百分之九十九点九。', 'Lin Yue rejects the warning while the ship AI Echo appears as the same small cyan holographic sphere above the center console. Echo verifies the future voice print. Over-shoulder composition includes Shen on the left seat, Lin on the right and the cyan sphere between them, continuous cockpit geography.', [shen, yue, echo]],
-    ['灾难倒计时', '主引擎监控屏', '屏幕微距转焦到林玥', '回声：主引擎冷却管破裂，预计十六分四十二秒后爆炸。', 'Direct continuation. Macro shot of the engine schematic turns from green to red as Echo identifies a hairline coolant rupture and begins a countdown at 16:42. Rack focus to Lin Yue realizing the future signal is real. The same amber cockpit lights now pulse red.', [yue, echo]],
-    ['唯一方案', '驾驶舱中央控制台', '稳定三角构图缓慢环绕', '林玥：必须去舱外手动抛掉反应堆。　沈舟：我去，你留在这里驾驶。', 'Without a scene jump, Lin displays the external reactor diagram. She explains someone must perform a manual ejection outside. Shen unclips his harness and assigns her to fly. Slow circular camera holds their fixed positions and uniforms, ticking countdown audible.', [shen, yue, echo]],
-    ['分歧', '气闸准备区', '手持跟拍沈舟穿头盔', '林玥：你是舰长，不该冒险。　沈舟：所以必须由我出去。', 'Moments later in Qiming-7’s narrow airlock. Shen still wears the same navy suit and adds the same white EVA helmet with amber stripe, no costume redesign. Lin follows him from the cockpit, arguing. He locks the helmet and answers, handheld camera, warning lights.', [shen, yue]],
-    ['出舱', '飞船气闸外', '从舱内跟随至太空全景', '林玥（无线电）：安全绳锁定。　沈舟：开始舱外作业。', 'Direct continuation. The outer hatch opens and Shen carefully pulls himself onto the graphite hull above Jupiter, tether attached to his waist. Camera follows from airlock into a wide exterior view; his white helmet, navy EVA suit and amber markings remain exact.', [shen, yue]],
-    ['爬向反应堆', '启明七号舰体表面', '低机位平行跟拍', '回声：距离爆炸十一分钟。　沈舟：足够了。', 'Shen crawls hand over hand along the same Q7 hull toward the rear reactor panel, Jupiter rotating below. Low tracking camera stays parallel to him. Echo announces eleven minutes over radio; Shen replies while keeping both magnetic boots planted.', [shen, echo]],
-    ['卡死的舱盖', '反应堆外壳', '手部特写与头盔近景', '沈舟：舱盖变形，打不开。　林玥：右侧维护槽，有机械释放杆。', 'Direct continuation at the rear panel. Shen’s gloved hands pull a warped reactor hatch that refuses to open. Close-up stays on the same amber-striped gloves and helmet. Lin Yue guides him by radio to a recessed mechanical lever on the right.', [shen, yue]],
-    ['微陨石来袭', '舰体与深空', '远景高速摇镜回到人物', '回声：微陨石群接近，撞击倒计时三、二、一！', 'A bright micro-meteor swarm emerges behind Jupiter. Camera whip-pans from the fast particles back to Shen bracing on the hull beside the unopened reactor panel. Echo counts down over radio; impacts spark across the graphite hull without changing the ship design.', [shen, echo]],
-    ['安全绳断裂', '舰体尾部', '慢动作近景后迅速拉远', '林玥：沈舟！　沈舟：我没事，先稳住飞船！', 'One meteor cuts Shen’s tether. In a brief slow-motion close shot the cable snaps, then camera pulls wide as he drifts one meter from the ship while gripping the manual lever with one hand. Lin shouts over radio; Shen tells her to stabilize the vessel.', [shen, yue]],
-    ['驾驶舱失控', '启明七号驾驶舱', '手持双人位模拟剧烈震动', '回声：姿态失控。　林玥：关闭自动驾驶，我来接管。', 'Cut inside the same cockpit at the exact same moment. Lin remains in her navy flight suit at the right pilot seat, manually correcting the violently shaking ship while Echo’s cyan sphere flickers above the console. Jupiter rolls outside, panels spark but retain layout.', [yue, echo]],
-    ['最后的释放杆', '反应堆外壳', '头盔主观镜头转手部特写', '林玥（无线电）：还有四分钟。　沈舟：我够到了。', 'Back outside, continuing Shen’s drift. Through his helmet view, his free hand stretches and finally catches the mechanical release lever. Cut to close-up as the amber-striped glove locks around it. Lin reports four minutes; his boots are still off the hull.', [shen, yue]],
-    ['抛出反应堆', '舰体尾部', '超广角跟随反应堆远离', '沈舟：反应堆已释放！　回声：爆炸仍将在九十秒后发生。', 'Shen pulls the lever. The cylindrical reactor ejects cleanly from Q7’s rear and tumbles away toward open space. Wide camera follows it while Shen remains gripping the hull edge. Echo warns it will still explode in ninety seconds.', [shen, echo]],
-    ['来不及撤离', '驾驶舱与舷窗', '林玥近景推向操纵杆', '林玥：你离爆心太近。　沈舟：别管我，带启明号走！', 'Inside the cockpit, Lin sees Shen stranded beside the hull and the glowing reactor behind him. She grips the controls, refusing his order to leave. Camera pushes from her determined face to the cargo-drone control switch beside her hand.', [shen, yue]],
-    ['货运无人机救援', '舰体外侧', '追随无人机高速飞行', '林玥：舰长的命令驳回。无人机，锁定沈舟！', 'Direct continuation. The same boxy orange cargo drone launches from Q7, flies along the graphite hull and extends two mechanical arms toward Shen. Dynamic tracking shot preserves ship direction, Jupiter background and Shen’s exact suit.', [shen, yue]],
-    ['爆炸与抓取', '深空舰尾', '慢动作环绕后强光遮挡', '沈舟：抓住了！　回声：冲击波五秒后抵达。', 'The orange drone clamps onto Shen’s forearm just as the discarded reactor explodes behind them. Slow circular camera captures the white helmet, navy suit and orange drone silhouetted against a blue-white blast, then the shockwave races toward Q7.', [shen, echo]],
-    ['回到气闸', '气闸内', '近景随舱门关闭稳定下来', '林玥：欢迎回来。　沈舟：那段警告，还没有发送。', 'The drone pulls Shen through the same airlock and the hatch seals. Lin helps remove his unchanged helmet. Their relief stops when Shen notices the console clock: the future warning has not yet been transmitted. Camera settles from shaking to stable.', [shen, yue]],
-    ['闭合时间环', '驾驶舱与地球方向', '录音特写缓慢拉远至舰外', '沈舟（录音）：不要启动主引擎！重复，不要启动！　林玥：发送时间，十七分钟前。', 'Final sequence in the same cockpit. Shen records the exact warning heard at the beginning while Lin programs transmission seventeen minutes into the past. Echo sends it; the waveform loops back on the display. Camera pulls through the window to Q7 flying safely toward a distant blue Earth, twin ion engines glowing, story circle complete.', [shen, yue, echo]],
+  const su = uid();
+  const he = uid();
+  const specs: Array<[string, string, string, string, string, string[], boolean]> = [
+    ['冰下两万米', '欧罗巴冰层下的黑色海洋', '极远景，缓慢下降', '苏弥旁白：这里没有日出，只有木星替我们计时。', 'Single continuous cinematic shot. Beneath Europa ice, the same small research submersible Nereid descends into a cathedral-scale black ocean. Matte ivory pressure hull, circular amber viewport, two short side lights. A pale blue ice ceiling recedes far above. Volumetric particles, restrained contrast, physically plausible underwater motion, 35mm anamorphic, no text.', [], false],
+    ['静默航行', '涅瑞伊得号驾驶舱', '双人侧面中景，微弱推轨', '贺川：氧气还剩四十七分钟。', 'Interior of the same compact submersible. Su Mi sits left at the science console and He Chuan sits right at the controls. One circular forward viewport, charcoal panels, dim amber practical lights. Camera makes one slow lateral move; both remain almost still as drifting particles pass outside. Premium minimal hard science fiction, natural skin, no holographic clutter.', [su, he], false],
+    ['海底脉冲', '驾驶舱前窗', '越肩镜头，焦点从仪表移向窗外', '苏弥：关掉声呐。听。', 'Direct continuation. Over Su Mi’s shoulder, the amber sonar trace stops. Beyond the same circular viewport, three faint cyan lights pulse once in the darkness, evenly spaced like a deliberate reply. Hold the composition and let silence create tension; only one action, no camera shake.', [su, he], true],
+    ['第一次回应', '驾驶舱前窗', '静止近景，玻璃反射人物眼睛', '贺川：那不是地质活动。', 'Continue from the supplied frame. The three distant cyan lights pulse again, now matching the submersible warning lamp rhythm. Su Mi’s eyes are reflected sharply in the curved glass while the ocean remains deep black. Controlled cyan and amber palette, subtle lens breathing, quiet awe.', [su, he], true],
+    ['向深渊转向', '冰下峡谷入口', '外景广角，平稳跟随', '苏弥：它在邀请我们。', 'Clean scene transition to exterior. Nereid turns once and enters a vast vertical ice canyon. Its ivory hull and amber viewport remain identical. The three cyan lights drift deeper ahead like distant lanterns; scale is monumental, motion slow and believable, no creatures yet.', [], false],
+    ['燃料警告', '驾驶舱控制台', '手部特写，缓慢上摇到人物', '贺川：进去以后，我们回不来。', 'Inside the unchanged cockpit. A single mechanical fuel gauge enters the red zone beneath He Chuan’s gloved hand. Camera slowly tilts to his restrained face; Su Mi remains soft in the background. One readable visual idea, realistic practical interface, no floating UI, no text overlays.', [su, he], false],
+    ['父亲的录音', '驾驶舱微光中', '苏弥正面近景，固定镜头', '录音：别把未知，当成需要消灭的东西。', 'Direct continuation. Su Mi presses a worn silver voice recorder hanging at her chest. She listens without speaking; a tiny warm indicator reflects beneath her left eye. Locked intimate close-up, shallow depth of field, quiet grief, no flashback and no extra action.', [su], true],
+    ['继续下潜', '冰下峡谷深处', '外景俯拍，船体穿过光带', '苏弥：继续。', 'Exterior transition. From high above, Nereid descends through one thin curtain of cyan bioluminescent particles. The lights flow around but never touch the hull. Slow geometric composition, deep negative space, ivory craft as a small solitary shape.', [], false],
+    ['看见它', '巨大冰穴', '超广角，几乎静止', '贺川：我的天……', 'Nereid emerges into an immense spherical ice cavern. At its center floats one elegant translucent lifeform shaped like a kilometer-wide Möbius ribbon, made of soft cyan light and fine branching veins. It moves extremely slowly, neither monster nor jellyfish. The submersible is tiny at lower left for scale, museum-grade concept art realism.', [], true],
+    ['镜像', '驾驶舱与生物同框', '人物背影双人镜头', '苏弥：它不是一只。是整片海。', 'Interior, both characters seen from behind in exact seats, framed by the circular viewport. Outside, the luminous ribbon folds once and creates two human-like silhouettes only as abstract negative space, never literal faces. Su Mi realizes the ocean is one distributed organism. Elegant, restrained, no spectacle overload.', [su, he], false],
+    ['污染协议', '驾驶舱红色警报状态', '控制台特写转向贺川', '系统：样本污染。执行热净化。', 'Direct continuation. One physical red quarantine lamp turns on and the cockpit amber light shifts to muted red. He Chuan looks toward a guarded ignition switch without touching it. Slow rack focus only; preserve cockpit layout and screen direction.', [he], true],
+    ['命令', '驾驶舱红光中', '双人中近景，稳定构图', '贺川：轨道站会烧掉这片海。　苏弥：除非我们不回去。', 'Continue in the same red-lit cockpit. He Chuan and Su Mi face each other across the narrow aisle, both controlled rather than melodramatic. He states the consequence; she answers after a beat. Symmetrical composition, natural micro-expressions, no gestures beyond eye movement.', [su, he], true],
+    ['烧毁天线', '涅瑞伊得号外景', '近距离侧跟，单一爆点', '贺川：做了就没有返航信标。', 'Exterior transition. Nereid fires one precise maintenance laser at its own dorsal communication antenna. The antenna separates in a brief shower of orange sparks, drifting into black water. The cyan organism remains distant and calm. No explosion, no debris storm, premium restrained VFX.', [], false],
+    ['共同决定', '驾驶舱', '两人手部特写', '苏弥：我知道。　贺川：那就一起迷路。', 'Inside the cockpit after the antenna is gone. Su Mi places her hand beside He Chuan’s on the central throttle, not over it. He moves the throttle forward once. Tight composition on hands, their faces reflected faintly in metal, warm amber returns against fading red.', [su, he], false],
+    ['最后的氧气', '冰穴边缘', '外景长焦，缓慢横移', '系统：氧气剩余十二分钟。', 'Nereid glides along the luminous organism’s outer edge. Its cyan branching veins respond in a gentle traveling wave beside the craft, never changing form. Long-lens parallax, serene motion, ivory hull consistent, no sudden creature attack.', [], true],
+    ['礼物', '驾驶舱前窗', '苏弥近景转焦到窗外', '苏弥：它听懂了。', 'Direct continuation inside. A single seed-sized cyan light passes through the hull without damage and rests above Su Mi’s open palm like a weightless star. Camera racks focus once from her calm face to the light. He Chuan watches from his fixed right seat, minimal wonder.', [su, he], false],
+    ['海洋点亮', '欧罗巴全球冰下海', '宏大远景，极慢拉远', '', 'Exterior transition. The small cyan seed pulses once inside Nereid; in response, branching light spreads through the entire black ocean beneath the ice like a planetary neural network. Nereid remains a tiny ivory silhouette. One majestic transformation, scientifically textured ice, sophisticated cyan-on-black image, no fantasy particles.', [], false],
+    ['失去动力', '驾驶舱暗场', '固定双人剪影', '贺川：电池结束了。　苏弥：不，是它开始了。', 'Inside, all cockpit lights shut off except the cyan seed and the vast living ocean outside. Su Mi and He Chuan become quiet silhouettes in their same seats. No panic, no movement; dialogue plays over a six-second contemplative hold.', [su, he], false],
+    ['被海托起', '发光洋流中', '外景低角度仰拍', '', 'Direct exterior continuation. A broad, slow current of cyan light gathers beneath the powerless Nereid and gently lifts it upward toward the ice ceiling. The craft stays level; no engines fire. Sacred but physically grounded, monumental negative space, slow cinema.', [], false],
+    ['新的日出', '欧罗巴冰面之下', '从船后拉远至木星轮廓', '苏弥旁白：后来，我们把第一次日出，留在了海里。', 'Final shot. Nereid comes to rest just beneath translucent Europa ice. Warm reflected light from Jupiter filters through above while the living cyan ocean glows below, creating the first dawn-like horizon. Camera slowly pulls away behind the unchanged craft; two tiny human silhouettes share the amber viewport. Poetic hard science fiction ending, no text, no logo.', [su, he], true],
   ];
   return {
-    name: 'LTX 2分钟太空科幻样例·十七分钟',
+    name: 'LTX 高级科幻样片·冰下日出',
     data: {
-      synopsis: '木星返航途中，启明七号收到一段来自十七分钟后的求救信号。舰长沈舟和工程师林玥必须在反应堆爆炸前完成舱外抛离，并亲手把警告送回过去。',
-      style: '电影级硬科幻写实，统一启明七号飞船空间，深石墨灰与琥珀色视觉系统，木星背景，固定角色服装与道具，连续光线方向',
-      aspect_ratio: '9:16',
+      synopsis: '欧罗巴冰下科考的最后四十七分钟，生物学家苏弥与驾驶员贺川发现整片海洋都是一个生命。为了阻止轨道站执行灭菌，他们烧毁返航天线、主动失联，却被刚刚苏醒的海洋托向一场从未存在过的日出。',
+      style: '高预算作者型硬科幻，克制表演与慢电影节奏，35mm变形宽银幕；象牙白潜航器、琥珀舱灯、青色生命光三色系统；真实水体、深黑留白、统一舱内空间与光线轴，不使用廉价全息界面和过量粒子',
+      aspect_ratio: '16:9',
       audio_assets: [],
       characters: [
-        { id: shen, name: '沈舟', description: '35岁中国男性舰长，短黑发，方正清瘦面孔，右眉尾小疤，始终穿深海军蓝连体飞行服，左胸白色Q7徽章，琥珀色肩带；舱外只额外佩戴白色球形头盔和同款琥珀条纹', voice_id: '' },
-        { id: yue, name: '林玥', description: '29岁中国女性工程师，黑色低马尾，椭圆脸，左眼下小痣，始终穿深海军蓝连体飞行服，左胸白色Q7徽章，银灰工具腕带', voice_id: '' },
-        { id: echo, name: '回声AI', description: '没有人体，始终表现为悬浮在中央控制台上方的拳头大小青色全息球，三道水平光环，柔和中性声音，不得变成人形机器人', voice_id: '' },
+        { id: su, name: '苏弥', description: '34岁中国女性冰下生物学家，清瘦椭圆脸，黑色齐下颌短发，左眼下浅痣；始终穿炭灰色无帽连体科考服，窄琥珀色领边，胸前挂磨损银色录音器；冷静、极少夸张表情', voice_id: '' },
+        { id: he, name: '贺川', description: '39岁中国男性潜航驾驶员，短黑发夹少量灰，窄长脸，下巴短胡茬；始终穿深海军蓝无帽连体驾驶服，右肩象牙白圆形徽章，黑色薄手套；沉稳克制、动作精确', voice_id: '' },
       ],
-      script: '第1集《十七分钟》（约2分钟）\n\n【开场】启明七号掠过木星，沈舟和林玥准备进行返航前最后一次主引擎点火。燃料只够一次修正。\n\n【异常】通信台收到来自十七分钟后的信号，录音里正是沈舟自己的声音：“不要启动主引擎！”回声AI验证声纹真实，并检测出冷却管破裂，主引擎将在十七分钟内爆炸。\n\n【任务】唯一生路是舱外手动抛离反应堆。沈舟坚持出舱，让林玥留在驾驶舱稳定飞船。两人约定完成任务后一起回家。\n\n【危机】沈舟打开反应堆外壳时遭遇微陨石群，安全绳被切断。林玥关闭自动驾驶亲自稳住飞船，同时用无线电指引沈舟找到机械释放杆。\n\n【高潮】反应堆成功抛离，却将在九十秒后爆炸。沈舟距离爆心太近，命令林玥离开；林玥驳回命令，发射货运无人机抓住沈舟。爆炸发生，无人机顶着冲击波将他拖回气闸。\n\n【闭环】获救后，两人发现最初的警告仍未发送。沈舟录下同样的话，林玥把信号送回十七分钟前。启明七号避开了爆炸，继续飞向地球。',
-      shots: specs.map(([title, scene, camera, dialogue, prompt, character_ids], index) => ({ id: uid(), title, scene, shot_size: index % 4 === 0 ? '全景' : '中近景', camera, duration: 6, engine: 'ltx-2.3', status: 'draft', seed: 5201 + index, character_ids, dialogue, prompt })),
+      script: '短片《冰下日出》（2分钟）\n\n【发现】欧罗巴冰下两万米，科考潜航器“涅瑞伊得”只剩四十七分钟氧气。苏弥要求关闭声呐，在绝对静默中，黑海以三次脉冲回应了他们。\n\n【深入】两人追随光脉进入冰下峡谷，看见一条横跨冰穴的发光莫比乌斯生命。它不是单个生物，而是整片海洋第一次睁开眼睛。\n\n【选择】污染协议自动启动：轨道站将在潜航器返回后焚烧整个海区。苏弥提出唯一办法——主动失联。贺川烧毁天线，两人放弃返航信标。\n\n【回应】电池和氧气即将耗尽时，生命把一粒光送到苏弥掌心。光脉点亮整颗星球的冰下海，并形成洋流托起失去动力的潜航器。\n\n【结尾】潜航器停在半透明冰层下，木星暖光从上方渗入，生命青光从下方升起。两个决定留下的人，看见了欧罗巴历史上的第一次日出。',
+      shots: specs.map(([title, scene, camera, dialogue, prompt, character_ids, continuity_from_previous], index) => ({ id: uid(), title, scene, shot_size: index % 4 === 0 ? '全景' : '中近景', camera, duration: 6, engine: 'ltx-2.3', status: 'draft', seed: 7301 + index, character_ids, dialogue, prompt, continuity_from_previous })),
     },
   };
 };
@@ -87,7 +85,7 @@ const ShortDramaTool: React.FC = () => {
       else {
         const saved = await mockBackend.saveDramaProject(user.token, sampleProject());
         setProjects([saved]); setProject(saved);
-        notify.success('已创建 2 分钟 LTX 完整故事样例');
+        notify.success('已创建 2 分钟 LTX 高级科幻样片');
       }
     } catch (error: any) { notify.error(error.message); }
     finally { setLoading(false); }
@@ -116,7 +114,7 @@ const ShortDramaTool: React.FC = () => {
       const saved = await mockBackend.saveDramaProject(user.token, sampleProject());
       setProjects((current) => [saved, ...current]);
       setProject(saved); projectRef.current = saved; setTab('project');
-      notify.success('已载入 2 分钟 LTX 完整故事样例');
+      notify.success('已载入 2 分钟 LTX 高级科幻样片');
     } catch (error: any) { notify.error(error.message); }
     finally { setSaving(false); }
   };
@@ -154,8 +152,9 @@ const ShortDramaTool: React.FC = () => {
     const character = shotCharacters.find((item) => item.reference_url);
     const shotIndex = projectRef.current.data.shots.findIndex((item) => item.id === shot.id);
     const previousShot = shotIndex > 0 ? projectRef.current.data.shots[shotIndex - 1] : undefined;
-    const continuityImage = previousShot?.ending_frame_url || character?.reference_url;
-    const usesPreviousFrame = Boolean(previousShot?.ending_frame_url);
+    const mayChainPreviousFrame = shot.continuity_from_previous !== false;
+    const continuityImage = (mayChainPreviousFrame && previousShot?.ending_frame_url) || character?.reference_url;
+    const usesPreviousFrame = Boolean(mayChainPreviousFrame && previousShot?.ending_frame_url);
     const generationPrompt = [
       shot.prompt,
       usesPreviousFrame ? 'Begin from the supplied final frame of the immediately preceding shot. Preserve the exact pose, screen direction, camera axis, lighting, costumes, props and environment, then continue the action naturally without a visual reset.' : '',
@@ -221,7 +220,7 @@ const ShortDramaTool: React.FC = () => {
   return <div className="h-full min-h-0 flex gap-4">
     <aside className="w-56 shrink-0 rounded-2xl border border-app-border bg-app-surface/60 p-3 flex flex-col min-h-0">
       <button onClick={createProject} className="w-full py-2.5 rounded-xl bg-app-accent text-white text-xs font-bold flex items-center justify-center gap-2"><Plus size={14} />新建短剧</button>
-      <button onClick={createSample} disabled={saving} className="w-full mt-2 py-2.5 rounded-xl border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50"><Sparkles size={14} />载入2分钟样例</button>
+      <button onClick={createSample} disabled={saving} className="w-full mt-2 py-2.5 rounded-xl border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50"><Sparkles size={14} />载入高级科幻样片</button>
       <div className="flex-1 overflow-y-auto custom-scrollbar mt-3 space-y-2">{projects.map((item) => <button key={item.id} onClick={() => setProject(item)} className={`w-full text-left p-3 rounded-xl border ${project?.id === item.id ? 'border-cyan-400 bg-cyan-500/10' : 'border-app-border hover:bg-app-surface-hover'}`}><div className="text-xs font-bold truncate">{item.name}</div><div className="text-[9px] text-app-subtext mt-1">{item.data.shots?.length || 0} 个镜头</div></button>)}</div>
     </aside>
     <section className="flex-1 min-w-0 min-h-0 flex flex-col rounded-2xl border border-app-border bg-app-surface/40 overflow-hidden">
