@@ -17,23 +17,43 @@ const emptyData = (): ProjectData => ({ synopsis: '', style: '电影感写实', 
 const sampleProject = (): Project => {
   const lin = uid();
   const manager = uid();
+  const futureLin = uid();
+  const specs: Array<[string, string, string, string, string, string[]]> = [
+    ['暴雨中的便利店', '便利店外景', '高位全景缓慢下降并推进', '', 'A small 24-hour convenience store alone on an empty city street at midnight during violent rain, cyan neon reflected on black wet asphalt, warm fluorescent light inside, camera descends and slowly pushes toward the entrance, thunder, wind and heavy rain, photorealistic cinematic suspense.', []],
+    ['林夏独自值班', '便利店货架区', '侧面中景平稳跟拍', '', 'The same young Chinese clerk Lin Xia, shoulder-length black hair, cream store uniform and blue name badge, quietly restocks shelves in an empty convenience store, camera tracks beside her, fluorescent hum, rain tapping glass, a digital clock approaches midnight, cinematic realism.', [lin]],
+    ['门铃在午夜响起', '便利店入口', '从林夏肩后快速转向门口', '', 'Over-the-shoulder shot behind Lin Xia as the entrance bell rings exactly at midnight. A slim middle-aged Chinese man in a soaked dark gray trench coat and old black fedora enters from the storm, water dripping onto the floor, camera pans sharply to him, bell chime and thunder.', [lin, manager]],
+    ['黄铜钥匙', '便利店柜台', '横移后推向道具特写', '今晚十二点以后，不要打开后门。', 'At the counter, the mysterious soaked man places an antique brass key engraved with a tiny clock onto the counter before Lin Xia. Camera slides sideways then pushes into an extreme close-up of the key, metallic click, tense fluorescent room tone, consistent costumes and faces.', [lin, manager]],
+    ['顾客消失在雨里', '便利店入口', '长焦跟拍到玻璃门外', '为什么？', 'Lin Xia calls after the mysterious man as he exits into the heavy rain. The camera follows through the glass door, but after one flash of lightning the street is completely empty, no footprints, only rain and neon reflections, distant thunder.', [lin, manager]],
+    ['后门三次敲响', '后门走廊', '手持跟随并突然静止', '谁在那里？', 'Lin Xia walks toward the dim metal back door holding the brass key. Handheld camera follows behind her shoulder and freezes when exactly three heavy knocks hit the door. Flickering ceiling light, her frightened breath, three distinct knocks, suspenseful photorealism.', [lin]],
+    ['监控里的未来', '收银台监控屏', '屏幕特写缓慢推近', '', 'Close-up of the security monitor. Live footage shows Lin Xia still standing at the back door, but beside her appears an older exhausted version of herself with wet hair and a torn dark coat. The real aisle is empty. Camera slowly pushes into the glitching screen, electronic static.', [lin, futureLin]],
+    ['来自明天的电话', '收银台', '环绕中近景', '林夏，别让他死在门后。', 'The store phone rings. Lin Xia answers with trembling hands while the camera circles her. A distorted older female voice identical to hers warns from the receiver. The digital clock flickers between 00:00 and 23:59, phone static, rain and low bass tension.', [lin, futureLin]],
+    ['时间开始倒流', '便利店全景', '快速拉远', '', 'Wide shot as time reverses inside the store: spilled water climbs upward, a fallen can jumps back onto a shelf, clock digits run backward, while Lin Xia remains still clutching the brass key. Camera rapidly pulls back, reversed sounds and electrical hum.', [lin]],
+    ['门缝后的男人', '后门', '低机位贴近门缝', '救救我。', 'Low-angle close shot of the metal back door. Cold blue light leaks through the bottom gap and the mysterious man’s wounded hand appears beneath it. Lin Xia kneels, recognizing the shallow scar on his hand, muffled male plea, rain roaring impossibly behind the indoor door.', [lin, manager]],
+    ['旧照片的真相', '员工休息室', '照片特写转焦到林夏', '这是我失踪的父亲。', 'Lin Xia pulls an old family photograph from her locker. Rack focus from the photo of her childhood father to the mysterious man visible through the back-door window; same eyebrow scar and face. Her eyes fill with recognition, quiet heartbeat and distant knocks.', [lin, manager]],
+    ['未来林夏现身', '冷藏柜通道', '逆光中缓慢推进', '我开过那扇门，所有人都消失了。', 'The older future Lin Xia materializes in cold mist between refrigerator aisles, same facial features but wet hair and torn dark coat. She warns her younger self while blue freezer light silhouettes them. Camera slowly pushes forward, glass doors vibrating, continuous character identity.', [lin, futureLin]],
+    ['两个选择', '便利店中央', '双人对称构图缓慢环绕', '不开门，他会死；现在开门，城市会被困在午夜。', 'Young Lin Xia and future Lin Xia stand opposite each other under flickering lights, the brass key between them. Symmetrical two-shot with slow circular camera move, future Lin explains the impossible choice, thunder and clock ticking grow louder.', [lin, futureLin]],
+    ['发现钥匙刻度', '黄铜钥匙特写', '微距旋转镜头', '不是十二点，是十二点零一分。', 'Macro cinematic shot of the antique brass key rotating in Lin Xia’s fingers. Beneath grime she reveals engraved numbers 00:01 and a tiny arrow. Camera rotates around the key, sharp metallic detail, ticking stops suddenly as she understands the hidden instruction.', [lin]],
+    ['等待最后一分钟', '后门走廊', '正面缓慢后退', '', 'Lin Xia walks toward the back door as the digital wall clock counts from 00:00:45 to 00:00:59. Camera retreats in front of her, future Lin follows anxiously, lights shutting off one by one behind them, heartbeat synchronized with clock ticks.', [lin, futureLin]],
+    ['午夜裂缝袭来', '后门走廊', '剧烈手持与快速摇镜', '', 'At 00:00:59 black liquid shadows burst through cracks around the metal door and race across walls toward the women. Lin Xia shields the key while future Lin holds the door shut. Violent handheld camera, alarms, roaring wind, realistic supernatural shadows.', [lin, futureLin]],
+    ['零点零一分开门', '后门', '钥匙特写后快速推进', '现在！', 'The clock flips to 00:01. Lin Xia thrusts the brass key into the lock and turns it. Extreme close-up then rapid camera push as the door opens into blinding warm daylight instead of rain. The shadow creatures dissolve, lock snaps, powerful whoosh and sudden silence.', [lin, futureLin]],
+    ['父亲获救', '晨光中的后门', '稳定中景缓慢靠近', '小夏，我终于回来了。', 'Warm dawn light fills the corridor. The mysterious man, revealed as Lin Xia’s missing father, falls safely through the doorway and removes his black fedora. Lin catches him in an embrace. Stable camera slowly moves closer, emotional breath, soft morning ambience.', [lin, manager]],
+    ['未来被改写', '便利店柜台', '三人景转单人特写', '这一次，你做对了。', 'Future Lin Xia smiles with relief as her torn dark coat becomes clean light particles. Young Lin and her father watch beside the counter. Camera moves from all three into future Lin’s peaceful close-up as she fades, rain stops and birds begin outside.', [lin, manager, futureLin]],
+    ['清晨新的开始', '便利店外景与柜台', '从钥匙拉远至晨景', '', 'Final shot begins on the antique brass key now resting harmlessly beside a family photograph on the counter. Camera slowly pulls back through the glass storefront into a calm sunrise street. Inside, Lin Xia and her father talk together, warm light, soft city ambience, complete hopeful ending.', [lin, manager]],
+  ];
   return {
-    name: 'LTX 样例·午夜便利店',
+    name: 'LTX 2分钟样例·午夜钥匙',
     data: {
-      synopsis: '深夜暴雨中，独自值班的女孩发现一位每天准时出现的神秘顾客，今晚却留下了一把不属于这个时代的钥匙。',
+      synopsis: '深夜暴雨中，便利店女孩林夏收到神秘顾客留下的黄铜钥匙。面对来自未来的自己，她必须在父亲的生命与整座城市的时间之间作出选择。',
       style: '电影感写实，雨夜霓虹，青橙色调，浅景深，连续角色造型',
       aspect_ratio: '9:16',
       audio_assets: [],
       characters: [
         { id: lin, name: '林夏', description: '24岁中国女孩，黑色齐肩短发，清秀面孔，米白色便利店制服外套，胸前蓝色工牌，神情敏锐克制', voice_id: '' },
         { id: manager, name: '神秘顾客', description: '40岁中国男人，瘦削面孔，湿透的深灰色长风衣，黑色旧礼帽，左眉有浅疤，沉默疲惫', voice_id: '' },
+        { id: futureLin, name: '未来林夏', description: '约32岁的林夏，与年轻林夏相同五官，湿乱黑发，深色破损长外套，眼神疲惫坚定', voice_id: '' },
       ],
-      script: '第1集《雨夜来客》\n场景：午夜便利店，窗外暴雨。\n林夏独自整理货架，门铃响起。神秘顾客走进店内，将一把老旧黄铜钥匙放在柜台。\n顾客：今晚十二点以后，不要打开后门。\n林夏：为什么？\n顾客没有回答，转身消失在雨幕里。后门忽然传来三下敲门声。',
-      shots: [
-        { id: uid(), title: '雨夜便利店建立镜头', scene: '午夜便利店外景', shot_size: '全景', camera: '缓慢推进', duration: 5, engine: 'ltx-2.3', status: 'draft', seed: 4201, character_ids: [], dialogue: '', prompt: 'Vertical cinematic establishing shot of a small convenience store at midnight in heavy rain, neon signs reflecting across wet asphalt, empty street, warm fluorescent interior contrasting with cold blue rain, camera slowly pushes toward the glass entrance, realistic water splashes and wind, distant thunder and steady rainfall, photorealistic, shallow atmospheric haze.' },
-        { id: uid(), title: '神秘顾客留下钥匙', scene: '便利店柜台', shot_size: '中近景', camera: '轻微横移后推近', duration: 5, engine: 'ltx-2.3', status: 'draft', seed: 4202, character_ids: [lin, manager], dialogue: '今晚十二点以后，不要打开后门。', prompt: 'Vertical cinematic medium close shot inside a midnight convenience store. A slim Chinese man in a soaked dark gray trench coat and old black fedora places an antique brass key on the counter. Across from him, a young Chinese clerk with shoulder-length black hair, cream uniform jacket and blue name badge watches cautiously. Camera slides sideways then slowly pushes toward the key, rain streaks on windows, fluorescent hum, key makes a sharp metallic click, consistent character appearance, photorealistic.' },
-        { id: uid(), title: '后门三声敲响', scene: '便利店后门走廊', shot_size: '近景转特写', camera: '跟拍后突然静止', duration: 5, engine: 'ltx-2.3', status: 'draft', seed: 4203, character_ids: [lin], dialogue: '谁在那里？', prompt: 'Vertical suspense shot following the same young Chinese convenience store clerk with shoulder-length black hair, cream uniform and blue badge as she walks cautiously toward a dim metal back door. The camera follows behind her shoulder and suddenly stops when three heavy knocks hit the door. She freezes and slowly turns her frightened face toward camera, cold flickering light, rain and low thunder outside, tense room tone, three distinct door knocks, cinematic photorealism.' },
-      ],
+      script: '第1集《午夜钥匙》（约2分钟）\n暴雨午夜，林夏在便利店独自值班。神秘顾客留下一把黄铜钥匙，警告她不要打开后门后消失。后门传来敲门声，监控里出现未来的林夏。她得知门后的人是失踪多年的父亲，但午夜开门会让整座城市困在时间循环。林夏从钥匙刻度发现真正的开启时间是零点零一分。黑暗裂缝袭来，她坚持等到最后一秒才开门，救回父亲并改写未来。清晨，时间恢复正常。',
+      shots: specs.map(([title, scene, camera, dialogue, prompt, character_ids], index) => ({ id: uid(), title, scene, shot_size: index % 4 === 0 ? '全景' : '中近景', camera, duration: 6, engine: 'ltx-2.3', status: 'draft', seed: 5201 + index, character_ids, dialogue, prompt })),
     },
   };
 };
@@ -67,7 +87,7 @@ const ShortDramaTool: React.FC = () => {
       else {
         const saved = await mockBackend.saveDramaProject(user.token, sampleProject());
         setProjects([saved]); setProject(saved);
-        notify.success('已创建 LTX 默认测试样例');
+        notify.success('已创建 2 分钟 LTX 完整故事样例');
       }
     } catch (error: any) { notify.error(error.message); }
     finally { setLoading(false); }
@@ -89,6 +109,17 @@ const ShortDramaTool: React.FC = () => {
   const patchShot = (id: string, patch: Partial<Shot>) => setProject((current) => { if (!current) return current; const next = { ...current, data: { ...current.data, shots: current.data.shots.map((shot) => shot.id === id ? { ...shot, ...patch } : shot) } }; projectRef.current = next; return next; });
 
   const createProject = () => { const next = { name: '未命名短剧', data: emptyData() }; setProject(next); setTab('project'); };
+  const createSample = async () => {
+    if (!user) return;
+    setSaving(true);
+    try {
+      const saved = await mockBackend.saveDramaProject(user.token, sampleProject());
+      setProjects((current) => [saved, ...current]);
+      setProject(saved); projectRef.current = saved; setTab('project');
+      notify.success('已载入 2 分钟 LTX 完整故事样例');
+    } catch (error: any) { notify.error(error.message); }
+    finally { setSaving(false); }
+  };
   const removeProject = async () => {
     if (!user || !project?.id || !confirm(`确定删除《${project.name}》吗？`)) return;
     await mockBackend.deleteDramaProject(user.token, project.id);
@@ -172,6 +203,7 @@ const ShortDramaTool: React.FC = () => {
   return <div className="h-full min-h-0 flex gap-4">
     <aside className="w-56 shrink-0 rounded-2xl border border-app-border bg-app-surface/60 p-3 flex flex-col min-h-0">
       <button onClick={createProject} className="w-full py-2.5 rounded-xl bg-app-accent text-white text-xs font-bold flex items-center justify-center gap-2"><Plus size={14} />新建短剧</button>
+      <button onClick={createSample} disabled={saving} className="w-full mt-2 py-2.5 rounded-xl border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50"><Sparkles size={14} />载入2分钟样例</button>
       <div className="flex-1 overflow-y-auto custom-scrollbar mt-3 space-y-2">{projects.map((item) => <button key={item.id} onClick={() => setProject(item)} className={`w-full text-left p-3 rounded-xl border ${project?.id === item.id ? 'border-cyan-400 bg-cyan-500/10' : 'border-app-border hover:bg-app-surface-hover'}`}><div className="text-xs font-bold truncate">{item.name}</div><div className="text-[9px] text-app-subtext mt-1">{item.data.shots?.length || 0} 个镜头</div></button>)}</div>
     </aside>
     <section className="flex-1 min-w-0 min-h-0 flex flex-col rounded-2xl border border-app-border bg-app-surface/40 overflow-hidden">
