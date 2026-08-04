@@ -1,7 +1,10 @@
 """One-time migration: local video files/JSON metadata -> TOS/PostgreSQL."""
 import json
+import sys
 from pathlib import Path
 from urllib.parse import urlparse
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.database import connection, init_database, save_generation_record
 from app.local_storage import STORAGE_ROOT, read_all_history

@@ -27,13 +27,21 @@ def public_url(object_key: str) -> str:
 
 
 def upload_stream(object_key: str, stream, content_type: str = "video/mp4") -> str:
+    import tos
     stream.seek(0)
-    _client().put_object(TOS_BUCKET, object_key, content=stream, content_type=content_type)
+    _client().put_object(
+        TOS_BUCKET, object_key, content=stream, content_type=content_type,
+        acl=tos.ACLType.ACL_Public_Read,
+    )
     return public_url(object_key)
 
 
 def upload_file(object_key: str, source: Path, content_type: str = "video/mp4") -> str:
-    _client().put_object_from_file(TOS_BUCKET, object_key, str(source), content_type=content_type)
+    import tos
+    _client().put_object_from_file(
+        TOS_BUCKET, object_key, str(source), content_type=content_type,
+        acl=tos.ACLType.ACL_Public_Read,
+    )
     return public_url(object_key)
 
 
