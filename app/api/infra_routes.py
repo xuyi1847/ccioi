@@ -4,6 +4,7 @@ import time
 import uuid
 from typing import Dict, Optional, Tuple, Any, List
 from io import BytesIO
+from pathlib import Path
 from html.parser import HTMLParser
 import ipaddress
 import socket
@@ -21,6 +22,7 @@ import math
 from playwright.sync_api import sync_playwright
 from concurrent.futures import ThreadPoolExecutor
 import os
+import tempfile
 import jwt
 import oss2
 import pandas as pd
@@ -61,7 +63,18 @@ from app.database import (
     set_system_setting,
     save_drama_project,
     delete_drama_project,
+    delete_generation_record,
+    get_generation_record,
+    list_generation_records,
+    save_generation_record,
     verify_password,
+)
+from app.tos_storage import (
+    configured as tos_configured,
+    delete_object as tos_delete_object,
+    download_file as tos_download_file,
+    upload_file as tos_upload_file,
+    upload_stream as tos_upload_stream,
 )
 from app.local_storage import (
     STORAGE_ROOT,
@@ -367,20 +380,24 @@ async def export_drama(req: DramaExportReq, auth: dict = Depends(get_user_from_a
         raise HTTPException(status_code=404, detail="Project not found")
     if not req.shot_urls:
         raise HTTPException(status_code=400, detail="No completed shots to export")
-    source_files = []
-    for url in req.shot_urls:
-        filename = os.path.basename(urlparse(url).path)
-        if not filename.endswith(".mp4") or safe_id(filename[:-4], "video_id") != filename[:-4]:
-            raise HTTPException(status_code=400, detail="Invalid shot video URL")
-        path = STORAGE_ROOT / "videos" / filename
-        if not path.is_file():
-            raise HTTPException(status_code=404, detail=f"Shot video is missing: {filename}")
-        source_files.append(path)
+    if not tos_configured():
+        raise HTTPException(status_code=503, detail="TOS is not configured")
     export_id = str(uuid.uuid4())
-    concat_file = STORAGE_ROOT / f"drama-{export_id}.txt"
-    output_file = STORAGE_ROOT / "videos" / f"{export_id}.mp4"
-    concat_file.write_text("".join(f"file '{path}'\n" for path in source_files), encoding="utf-8")
-    try:
+    with tempfile.TemporaryDirectory(prefix="ccioi-drama-") as temp_name:
+        temp_dir = Path(temp_name)
+        source_files = []
+        for index, url in enumerate(req.shot_urls):
+            filename = os.path.basename(urlparse(url).path)
+            task_id = filename[:-4] if filename.endswith(".mp4") else ""
+            record = get_generation_record(task_id, auth["sub"]) if task_id else None
+            if not record or not record.get("object_key"):
+                raise HTTPException(status_code=404, detail=f"Shot video is unavailable: {filename}")
+            path = temp_dir / f"shot-{index:04d}.mp4"
+            await asyncio.to_thread(tos_download_file, record["object_key"], path)
+            source_files.append(path)
+        concat_file = temp_dir / "concat.txt"
+        output_file = temp_dir / f"{export_id}.mp4"
+        concat_file.write_text("".join(f"file '{path}'\n" for path in source_files), encoding="utf-8")
         process = await asyncio.create_subprocess_exec(
             "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file),
             "-c:v", "libx264", "-c:a", "aac", "-movflags", "+faststart", str(output_file),
@@ -388,11 +405,10 @@ async def export_drama(req: DramaExportReq, auth: dict = Depends(get_user_from_a
         )
         _, stderr = await process.communicate()
         if process.returncode != 0:
-            output_file.unlink(missing_ok=True)
             raise HTTPException(status_code=500, detail=f"FFmpeg export failed: {stderr.decode(errors='ignore')[-500:]}")
-        return {"id": export_id, "public_url": local_public_url(f"videos/{export_id}.mp4")}
-    finally:
-        concat_file.unlink(missing_ok=True)
+        object_key = f"drama/{auth['sub']}/{export_id}.mp4"
+        result_url = await asyncio.to_thread(tos_upload_file, object_key, output_file, "video/mp4")
+        return {"id": export_id, "public_url": result_url}
 
 
 @router.post("/drama/ending-frame")
@@ -401,24 +417,24 @@ async def drama_ending_frame(req: DramaEndingFrameReq, auth: dict = Depends(get_
     task_id = filename[:-4] if filename.endswith(".mp4") else ""
     if not task_id or safe_id(task_id, "task_id") != task_id:
         raise HTTPException(status_code=400, detail="Invalid shot video URL")
-    owned_tasks = {str(item.get("id")) for item in read_user_history(auth["sub"])}
-    if task_id not in owned_tasks:
+    record = get_generation_record(task_id, auth["sub"])
+    if not record or not record.get("object_key"):
         raise HTTPException(status_code=404, detail="Shot video not found")
-    source = STORAGE_ROOT / "videos" / filename
-    if not source.is_file():
-        raise HTTPException(status_code=404, detail="Shot video is missing")
-    frame_key = f"uploads/{task_id}-ending.jpg"
-    destination = STORAGE_ROOT / frame_key
-    process = await asyncio.create_subprocess_exec(
-        "ffmpeg", "-y", "-sseof", "-0.08", "-i", str(source), "-frames:v", "1",
-        "-q:v", "2", str(destination), stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    _, stderr = await process.communicate()
-    if process.returncode != 0 or not destination.is_file():
-        destination.unlink(missing_ok=True)
-        raise HTTPException(status_code=500, detail=f"Ending frame extraction failed: {stderr.decode(errors='ignore')[-300:]}")
-    return {"public_url": local_public_url(frame_key)}
+    with tempfile.TemporaryDirectory(prefix="ccioi-frame-") as temp_name:
+        source = Path(temp_name) / filename
+        destination = Path(temp_name) / f"{task_id}.jpg"
+        await asyncio.to_thread(tos_download_file, record["object_key"], source)
+        process = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-y", "-sseof", "-0.08", "-i", str(source), "-frames:v", "1",
+            "-q:v", "2", str(destination), stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await process.communicate()
+        if process.returncode != 0 or not destination.is_file():
+            raise HTTPException(status_code=500, detail=f"Ending frame extraction failed: {stderr.decode(errors='ignore')[-300:]}")
+        frame_key = f"frames/{auth['sub']}/{task_id}-ending.jpg"
+        frame_url = await asyncio.to_thread(tos_upload_file, frame_key, destination, "image/jpeg")
+        return {"public_url": frame_url}
 
 
 @router.post("/chat")
@@ -891,7 +907,7 @@ async def get_history(user: dict = Depends(get_user_from_auth)):
         raise HTTPException(status_code=401, detail="Invalid token payload: missing sub")
 
     try:
-        return read_user_history(user_id)
+        return list_generation_records(user_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -902,20 +918,20 @@ async def admin_history(admin: dict = Depends(require_super_admin)):
     return [
         {**item, "user_email": users.get(item.get("user_id"), {}).get("email"),
          "user_name": users.get(item.get("user_id"), {}).get("name")}
-        for item in read_all_history()
+        for item in list_generation_records()
     ]
 
 
 @router.get("/showcase")
 async def homepage_showcase():
     selected_ids = get_system_setting("homepage_showcase", []) or []
-    records = {str(item.get("id")): item for item in read_all_history() if item.get("id")}
+    records = {str(item.get("id")): item for item in list_generation_records() if item.get("id")}
     return [records[task_id] for task_id in selected_ids if task_id in records]
 
 
 @router.put("/admin/showcase/{task_id}")
 async def update_homepage_showcase(task_id: str, req: ShowcaseReq, admin: dict = Depends(require_super_admin)):
-    available = {str(item.get("id")) for item in read_all_history() if item.get("id")}
+    available = {str(item.get("id")) for item in list_generation_records() if item.get("id")}
     if task_id not in available:
         raise HTTPException(status_code=404, detail="Generation record not found")
     selected_ids = [str(item) for item in (get_system_setting("homepage_showcase", []) or [])]
@@ -937,7 +953,7 @@ async def admin_operations(limit: int = 500, admin: dict = Depends(require_super
 @router.get("/admin/users")
 async def admin_users(admin: dict = Depends(require_super_admin)):
     history_counts: dict[str, int] = {}
-    for item in read_all_history():
+    for item in list_generation_records():
         owner_id = item.get("user_id")
         if owner_id:
             history_counts[owner_id] = history_counts.get(owner_id, 0) + 1
@@ -986,6 +1002,9 @@ async def delete_history_item(task_id: str, user: dict = Depends(get_user_from_a
         raise HTTPException(status_code=401, detail="Invalid token payload: missing sub")
 
     try:
+        record = delete_generation_record(task_id, user_id)
+        if record and record.get("object_key"):
+            await asyncio.to_thread(tos_delete_object, record["object_key"])
         delete_history(user_id, task_id)
         return {"status": "deleted", "task_id": task_id}
     except Exception as e:
@@ -1467,10 +1486,7 @@ async def gpu_upload(
     file: UploadFile = File(...),
 ):
     """
-    GPU 生成完成后调用：
-    - 上传视频
-    - 写本机磁盘
-    - 写 meta
+    GPU 生成完成后调用：上传 TOS，并把视频地址写入 PostgreSQL。
     """
     if not task_id or not user_id:
         raise HTTPException(status_code=400, detail="task_id and user_id required")
@@ -1478,24 +1494,11 @@ async def gpu_upload(
     try:
         task_id = safe_id(task_id, "task_id")
         user_id = safe_id(user_id, "user_id")
-        # ===== 1. 存视频 =====
-        video_key = f"videos/{task_id}.mp4"
-        await save_upload(file, video_key, 4 * 1024**3)
-        public_url = local_public_url(video_key)
-
-        # ===== 2. 写 meta =====
-        meta_key = f"users/{user_id}/meta/{task_id}.json"
-        write_json(
-            meta_key,
-            {
-                "id": task_id,
-                "user_id": user_id,
-                "prompt": prompt,
-                "video_url": public_url,
-                "created_at": time.time(),
-            },
-        )
-        cleanup_storage()
+        if not tos_configured():
+            raise HTTPException(status_code=503, detail="TOS is not configured")
+        video_key = f"videos/{user_id}/{task_id}.mp4"
+        public_url = await asyncio.to_thread(tos_upload_stream, video_key, file.file, "video/mp4")
+        save_generation_record(task_id, user_id, prompt, public_url, video_key)
 
         return {
             "status": "success",

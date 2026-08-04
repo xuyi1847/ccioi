@@ -120,6 +120,17 @@ def init_database() -> None:
         "CREATE INDEX IF NOT EXISTS idx_geo_reports_user_created ON geo_reports (user_id, created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_operation_logs_created ON operation_logs (created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_drama_projects_user_updated ON drama_projects (user_id, updated_at DESC)",
+        """
+        CREATE TABLE IF NOT EXISTS generation_records (
+            id TEXT PRIMARY KEY,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            prompt TEXT NOT NULL DEFAULT '',
+            video_url TEXT NOT NULL,
+            object_key TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_generation_records_user_created ON generation_records (user_id, created_at DESC)",
     )
     with connection() as conn:
         with conn.cursor() as cursor:
@@ -464,3 +475,63 @@ def list_geo_reports(user_id: str, limit: int = 20) -> list[dict]:
                 }
                 for row in cursor.fetchall()
             ]
+
+
+def save_generation_record(task_id: str, user_id: str, prompt: str, video_url: str, object_key: Optional[str] = None) -> dict:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO generation_records (id, user_id, prompt, video_url, object_key)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                    user_id = EXCLUDED.user_id, prompt = EXCLUDED.prompt,
+                    video_url = EXCLUDED.video_url, object_key = EXCLUDED.object_key
+                RETURNING id, user_id, prompt, video_url, object_key, created_at
+                """,
+                (task_id, user_id, prompt or "", video_url, object_key),
+            )
+            row = cursor.fetchone()
+            return {**dict(row), "user_id": str(row["user_id"]), "created_at": row["created_at"].timestamp()}
+
+
+def list_generation_records(user_id: Optional[str] = None) -> list[dict]:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, user_id, prompt, video_url, object_key, created_at
+                FROM generation_records
+                WHERE (%s::uuid IS NULL OR user_id = %s::uuid)
+                ORDER BY created_at DESC
+                """,
+                (user_id, user_id),
+            )
+            return [
+                {**dict(row), "user_id": str(row["user_id"]), "created_at": row["created_at"].timestamp()}
+                for row in cursor.fetchall()
+            ]
+
+
+def get_generation_record(task_id: str, user_id: Optional[str] = None) -> Optional[dict]:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """SELECT id, user_id, prompt, video_url, object_key, created_at
+                   FROM generation_records
+                   WHERE id = %s AND (%s::uuid IS NULL OR user_id = %s::uuid)""",
+                (task_id, user_id, user_id),
+            )
+            row = cursor.fetchone()
+            return ({**dict(row), "user_id": str(row["user_id"]), "created_at": row["created_at"].timestamp()} if row else None)
+
+
+def delete_generation_record(task_id: str, user_id: str) -> Optional[dict]:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM generation_records WHERE id = %s AND user_id = %s RETURNING object_key, video_url",
+                (task_id, user_id),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
