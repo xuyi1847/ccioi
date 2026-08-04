@@ -61,8 +61,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-2xl bg-app-surface border border-app-border rounded-2xl shadow-2xl overflow-hidden relative animate-fade-up flex flex-col md:flex-row">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+      <div className="w-full max-w-2xl max-h-[96dvh] bg-app-surface border border-app-border rounded-xl sm:rounded-2xl shadow-2xl overflow-y-auto relative animate-fade-up flex flex-col md:flex-row">
         
         <button 
           onClick={onClose}

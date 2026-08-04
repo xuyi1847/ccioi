@@ -125,13 +125,13 @@ const AdminTool: React.FC = () => {
   const enabledCount = users.filter((item) => item.enabled).length;
 
   return (
-    <div className="h-full min-h-0 flex flex-col gap-5">
+    <div className="h-auto lg:h-full min-h-0 flex flex-col gap-3 sm:gap-5">
       <div className="flex flex-wrap items-center justify-between gap-4 shrink-0">
         <div><h2 className="text-2xl font-bold text-app-text flex items-center gap-2"><ShieldCheck className="text-cyan-400" />管理员控制台</h2><p className="text-xs text-app-subtext mt-1">管理注册用户、账号状态和使用记录</p></div>
         <button onClick={loadUsers} disabled={loading} className="p-2.5 rounded-xl border border-app-border bg-app-surface hover:bg-app-surface-hover text-app-text"><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /></button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
+      <div className="grid grid-cols-1 min-[380px]:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 shrink-0">
         {[['注册用户', users.length, Users], ['启用账号', enabledCount, CheckCircle2], ['停用账号', users.length - enabledCount, Ban], ['生成总数', users.reduce((sum, item) => sum + Number(item.generation_count || 0), 0), Activity]].map(([label, value, Icon]: any) => <div key={label} className="rounded-2xl border border-app-border bg-app-surface/60 p-4"><Icon size={17} className="text-cyan-400 mb-2" /><div className="text-2xl font-bold text-app-text">{value}</div><div className="text-[10px] text-app-subtext">{label}</div></div>)}
       </div>
 

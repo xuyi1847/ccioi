@@ -153,8 +153,8 @@ const AmazonPollutionTool: React.FC = () => {
   };
 
   return (
-    <div className="h-full overflow-y-auto custom-scrollbar p-1">
-      <div className="grid grid-cols-1 xl:grid-cols-[380px_minmax(0,1fr)] gap-6">
+    <div className="h-auto lg:h-full overflow-visible lg:overflow-y-auto custom-scrollbar p-0.5 lg:p-1">
+      <div className="grid grid-cols-1 xl:grid-cols-[380px_minmax(0,1fr)] gap-4 lg:gap-6">
         <section className="bg-app-surface/60 p-6 rounded-3xl border border-app-border shadow-xl backdrop-blur-md h-fit">
           <div className="mb-6">
             <h2 className="text-xl font-bold flex items-center gap-2 text-violet-400">

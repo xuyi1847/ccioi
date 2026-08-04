@@ -211,10 +211,10 @@ const VibeVoiceTool: React.FC = () => {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col gap-6 min-h-0">
-        <div className="bg-app-surface/30 rounded-[2.5rem] border border-app-border flex-1 flex flex-col min-h-0 relative overflow-hidden backdrop-blur-sm">
+      <div className="flex-1 flex flex-col gap-4 lg:gap-6 min-h-[60dvh] lg:min-h-0">
+        <div className="bg-app-surface/30 rounded-2xl lg:rounded-[2.5rem] border border-app-border flex-1 flex flex-col min-h-[56dvh] lg:min-h-0 relative overflow-hidden backdrop-blur-sm">
           
-          <div className="flex-1 flex flex-col p-8 gap-6 overflow-hidden min-h-0">
+          <div className="flex-1 flex flex-col p-4 lg:p-8 gap-4 lg:gap-6 overflow-hidden min-h-0">
             <div className="flex flex-col gap-2 shrink-0">
               <label className="text-[10px] font-bold text-app-subtext uppercase tracking-widest flex items-center gap-2">
                 <FileText size={14} /> {t('tool.vibevoice.script')}

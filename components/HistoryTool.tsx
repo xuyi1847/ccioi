@@ -132,7 +132,7 @@ const HistoryTool: React.FC = () => {
   }
 
   return (
-    <div className="h-full min-h-0 flex flex-col gap-5 animate-fade-in tracking-tight">
+    <div className="h-auto lg:h-full min-h-0 flex flex-col gap-3 sm:gap-5 animate-fade-in tracking-tight">
       <div className="flex items-center justify-between gap-4 shrink-0">
         <div>
           <h2 className="text-xl sm:text-2xl font-bold text-app-text flex items-center gap-3"><History className="text-app-accent" size={26} />{t('tool.history.title')}</h2>

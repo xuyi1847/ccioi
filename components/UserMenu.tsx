@@ -69,7 +69,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ compact = false, onOpenAuth, onOpen
       </button>
 
       {isMenuOpen && (
-        <div className="absolute right-0 mt-2 w-56 bg-app-surface border border-app-border rounded-xl shadow-xl overflow-hidden z-[80] animate-fade-up">
+        <div className="fixed sm:absolute right-2 sm:right-0 mt-2 w-[calc(100vw-1rem)] sm:w-56 max-w-72 bg-app-surface border border-app-border rounded-xl shadow-xl overflow-hidden z-[80] animate-fade-up">
            <div className="p-4 border-b border-app-border bg-app-surface-hover/30">
               <p className="text-sm font-bold text-app-text">{user.name}</p>
               <p className="text-xs text-app-subtext truncate">{user.email}</p>

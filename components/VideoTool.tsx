@@ -369,7 +369,7 @@ const VideoTool: React.FC = () => {
           </div>
         </div>
       </div>
-      <div className="flex-1 flex flex-col gap-6 min-h-0 h-full overflow-hidden">
+      <div className="flex-1 flex flex-col gap-4 lg:gap-6 min-h-[60dvh] lg:min-h-0 h-[60dvh] lg:h-full overflow-hidden">
         <div className="bg-app-surface/30 rounded-3xl border border-app-border flex-1 flex flex-col items-center justify-center relative overflow-hidden group/preview p-0 bg-black/60 min-h-0">
           {(isGenerating || isConnecting) && (
             <div className="absolute inset-0 z-[60] bg-app-base/95 backdrop-blur-md flex flex-col animate-fade-in">

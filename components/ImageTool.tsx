@@ -86,7 +86,7 @@ const ImageTool: React.FC = () => {
           </div>
         </div>
       </div>
-      <div className="lg:col-span-2 bg-app-base rounded-2xl border border-app-border flex items-center justify-center p-4 relative overflow-hidden min-h-0">
+      <div className="lg:col-span-2 bg-app-base rounded-2xl border border-app-border flex items-center justify-center p-3 lg:p-4 relative overflow-hidden min-h-[55dvh] lg:min-h-0">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-purple-900/10 via-app-base to-app-base pointer-events-none" />
         {isGenerating ? <div className="flex flex-col items-center gap-3 text-app-subtext animate-pulse"><Loader2 className="w-10 h-10 animate-spin text-purple-500" /><p>{t('pay.processing')}</p></div> :
           resultImage ? <div className="relative group max-w-full max-h-full flex items-center justify-center">

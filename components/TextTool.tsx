@@ -44,7 +44,7 @@ const TextTool: React.FC = () => {
 
   return (
     <div className="h-auto lg:h-full grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 flex-1 min-h-0">
-       <div className="flex flex-col h-full bg-app-surface/50 rounded-2xl border border-app-border p-6 shadow-xl min-h-0">
+       <div className="flex flex-col h-auto lg:h-full bg-app-surface/50 rounded-2xl border border-app-border p-4 lg:p-6 shadow-xl min-h-[55dvh] lg:min-h-0">
           <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-emerald-400">
             <FileText className="w-5 h-5" />
             {t('tool.text.title')}
