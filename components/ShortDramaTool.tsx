@@ -14,6 +14,29 @@ interface Project { id?: string; name: string; data: ProjectData; updated_at?: s
 
 const uid = () => crypto.randomUUID();
 const emptyData = (): ProjectData => ({ synopsis: '', style: '电影感写实', aspect_ratio: '9:16', characters: [], script: '', shots: [], audio_assets: [] });
+const sampleProject = (): Project => {
+  const lin = uid();
+  const manager = uid();
+  return {
+    name: 'LTX 样例·午夜便利店',
+    data: {
+      synopsis: '深夜暴雨中，独自值班的女孩发现一位每天准时出现的神秘顾客，今晚却留下了一把不属于这个时代的钥匙。',
+      style: '电影感写实，雨夜霓虹，青橙色调，浅景深，连续角色造型',
+      aspect_ratio: '9:16',
+      audio_assets: [],
+      characters: [
+        { id: lin, name: '林夏', description: '24岁中国女孩，黑色齐肩短发，清秀面孔，米白色便利店制服外套，胸前蓝色工牌，神情敏锐克制', voice_id: '' },
+        { id: manager, name: '神秘顾客', description: '40岁中国男人，瘦削面孔，湿透的深灰色长风衣，黑色旧礼帽，左眉有浅疤，沉默疲惫', voice_id: '' },
+      ],
+      script: '第1集《雨夜来客》\n场景：午夜便利店，窗外暴雨。\n林夏独自整理货架，门铃响起。神秘顾客走进店内，将一把老旧黄铜钥匙放在柜台。\n顾客：今晚十二点以后，不要打开后门。\n林夏：为什么？\n顾客没有回答，转身消失在雨幕里。后门忽然传来三下敲门声。',
+      shots: [
+        { id: uid(), title: '雨夜便利店建立镜头', scene: '午夜便利店外景', shot_size: '全景', camera: '缓慢推进', duration: 5, engine: 'ltx-2.3', status: 'draft', seed: 4201, character_ids: [], dialogue: '', prompt: 'Vertical cinematic establishing shot of a small convenience store at midnight in heavy rain, neon signs reflecting across wet asphalt, empty street, warm fluorescent interior contrasting with cold blue rain, camera slowly pushes toward the glass entrance, realistic water splashes and wind, distant thunder and steady rainfall, photorealistic, shallow atmospheric haze.' },
+        { id: uid(), title: '神秘顾客留下钥匙', scene: '便利店柜台', shot_size: '中近景', camera: '轻微横移后推近', duration: 5, engine: 'ltx-2.3', status: 'draft', seed: 4202, character_ids: [lin, manager], dialogue: '今晚十二点以后，不要打开后门。', prompt: 'Vertical cinematic medium close shot inside a midnight convenience store. A slim Chinese man in a soaked dark gray trench coat and old black fedora places an antique brass key on the counter. Across from him, a young Chinese clerk with shoulder-length black hair, cream uniform jacket and blue name badge watches cautiously. Camera slides sideways then slowly pushes toward the key, rain streaks on windows, fluorescent hum, key makes a sharp metallic click, consistent character appearance, photorealistic.' },
+        { id: uid(), title: '后门三声敲响', scene: '便利店后门走廊', shot_size: '近景转特写', camera: '跟拍后突然静止', duration: 5, engine: 'ltx-2.3', status: 'draft', seed: 4203, character_ids: [lin], dialogue: '谁在那里？', prompt: 'Vertical suspense shot following the same young Chinese convenience store clerk with shoulder-length black hair, cream uniform and blue badge as she walks cautiously toward a dim metal back door. The camera follows behind her shoulder and suddenly stops when three heavy knocks hit the door. She freezes and slowly turns her frightened face toward camera, cold flickering light, rain and low thunder outside, tense room tone, three distinct door knocks, cinematic photorealism.' },
+      ],
+    },
+  };
+};
 
 const ShortDramaTool: React.FC = () => {
   const { user } = useAuth();
@@ -40,8 +63,12 @@ const ShortDramaTool: React.FC = () => {
     setLoading(true);
     try {
       const items = await mockBackend.getDramaProjects(user.token);
-      setProjects(items);
-      if (items.length) setProject(items[0]);
+      if (items.length) { setProjects(items); setProject(items[0]); }
+      else {
+        const saved = await mockBackend.saveDramaProject(user.token, sampleProject());
+        setProjects([saved]); setProject(saved);
+        notify.success('已创建 LTX 默认测试样例');
+      }
     } catch (error: any) { notify.error(error.message); }
     finally { setLoading(false); }
   };
