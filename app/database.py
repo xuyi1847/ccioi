@@ -132,6 +132,15 @@ def init_database() -> None:
         """,
         "CREATE INDEX IF NOT EXISTS idx_generation_records_user_created ON generation_records (user_id, created_at DESC)",
         "ALTER TABLE generation_records ADD COLUMN IF NOT EXISTS thumbnail_url TEXT",
+        """
+        CREATE TABLE IF NOT EXISTS video_task_bindings (
+            task_id TEXT PRIMARY KEY,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            project_id UUID REFERENCES drama_projects(id) ON DELETE CASCADE,
+            shot_id TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
     )
     with connection() as conn:
         with conn.cursor() as cursor:
@@ -537,3 +546,75 @@ def delete_generation_record(task_id: str, user_id: str) -> Optional[dict]:
             )
             row = cursor.fetchone()
             return dict(row) if row else None
+
+
+def bind_video_task(task_id: str, user_id: str, project_id: Optional[str], shot_id: Optional[str]) -> None:
+    if not project_id or not shot_id:
+        return
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT 1 FROM drama_projects WHERE id = %s AND user_id = %s", (project_id, user_id))
+            if not cursor.fetchone():
+                raise ValueError("Drama project not found")
+            cursor.execute(
+                """INSERT INTO video_task_bindings (task_id, user_id, project_id, shot_id)
+                   VALUES (%s, %s, %s, %s)
+                   ON CONFLICT (task_id) DO UPDATE SET project_id = EXCLUDED.project_id, shot_id = EXCLUDED.shot_id""",
+                (task_id, user_id, project_id, shot_id),
+            )
+
+
+def complete_bound_drama_shot(task_id: str, video_url: str, thumbnail_url: Optional[str] = None) -> bool:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """SELECT b.project_id, b.shot_id, p.data
+                   FROM video_task_bindings b JOIN drama_projects p ON p.id = b.project_id
+                   WHERE b.task_id = %s FOR UPDATE OF p""",
+                (task_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return False
+            data = row["data"] or {}
+            changed = False
+            for shot in data.get("shots", []):
+                if str(shot.get("id")) == str(row["shot_id"]):
+                    shot.update({"status": "done", "output_url": video_url, "task_id": task_id})
+                    if thumbnail_url:
+                        shot["preview_url"] = thumbnail_url
+                    changed = True
+                    break
+            if changed:
+                cursor.execute(
+                    "UPDATE drama_projects SET data = %s::jsonb, updated_at = NOW() WHERE id = %s",
+                    (json.dumps(data, ensure_ascii=False), row["project_id"]),
+                )
+            return changed
+
+
+def reconcile_drama_projects(user_id: str) -> None:
+    records = list_generation_records(user_id)
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT id, data FROM drama_projects WHERE user_id = %s", (user_id,))
+            for project in cursor.fetchall():
+                data = project["data"] or {}
+                used = {str(shot.get("task_id")) for shot in data.get("shots", []) if shot.get("task_id")}
+                changed = False
+                for shot in data.get("shots", []):
+                    if shot.get("output_url"):
+                        continue
+                    shot_prompt = str(shot.get("prompt") or "").strip()
+                    if not shot_prompt:
+                        continue
+                    match = next((item for item in records if item["id"] not in used and str(item.get("prompt") or "").startswith(shot_prompt)), None)
+                    if match:
+                        shot.update({"status": "done", "output_url": match["video_url"], "preview_url": match.get("thumbnail_url"), "task_id": match["id"]})
+                        used.add(match["id"])
+                        changed = True
+                if changed:
+                    cursor.execute(
+                        "UPDATE drama_projects SET data = %s::jsonb, updated_at = NOW() WHERE id = %s",
+                        (json.dumps(data, ensure_ascii=False), project["id"]),
+                    )

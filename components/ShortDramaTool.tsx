@@ -8,7 +8,7 @@ import { uploadToOSS } from '../services/ossService';
 
 type Engine = 'ltx-2.3' | 'opensora';
 interface Character { id: string; name: string; description: string; reference_url?: string; voice_id?: string; }
-interface Shot { id: string; title: string; scene: string; shot_size: string; camera: string; duration: number; prompt: string; dialogue: string; character_ids: string[]; engine: Engine; status: 'draft' | 'queued' | 'generating' | 'done' | 'failed'; output_url?: string; ending_frame_url?: string; preview_url?: string; progress?: number; continuity_from_previous?: boolean; seed: number; }
+interface Shot { id: string; title: string; scene: string; shot_size: string; camera: string; duration: number; prompt: string; dialogue: string; character_ids: string[]; engine: Engine; status: 'draft' | 'queued' | 'generating' | 'done' | 'failed'; task_id?: string; output_url?: string; ending_frame_url?: string; preview_url?: string; progress?: number; continuity_from_previous?: boolean; seed: number; }
 interface ProjectData { synopsis: string; style: string; aspect_ratio: string; characters: Character[]; script: string; shots: Shot[]; audio_assets: any[]; export_url?: string; }
 interface Project { id?: string; name: string; data: ProjectData; updated_at?: string; }
 
@@ -192,6 +192,11 @@ const ShortDramaTool: React.FC = () => {
     if (!lastMessage || !activeShotId) return;
     try {
       const message = JSON.parse(lastMessage);
+      if (message.type === 'TASK_ACCEPTED') {
+        patchShot(activeShotId, { task_id: message.task_id, status: 'generating' });
+        setTimeout(() => save(projectRef.current), 0);
+        return;
+      }
       if (message.type === 'TASK_PREVIEW') {
         patchShot(activeShotId, { preview_url: message.preview_url || undefined, progress: Number(message.progress) || undefined });
         return;

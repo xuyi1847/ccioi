@@ -45,6 +45,8 @@ from pydantic import BaseModel, EmailStr
 from openai import OpenAI
 from app.database import (
     add_balance,
+    bind_video_task,
+    complete_bound_drama_shot,
     create_user,
     get_user_by_email,
     get_user_by_id,
@@ -55,6 +57,7 @@ from app.database import (
     list_drama_projects,
     log_operation,
     public_user,
+    reconcile_drama_projects,
     list_geo_reports,
     save_geo_report,
     save_user_config,
@@ -322,6 +325,7 @@ async def write_user_config(req: UserConfigReq, auth: dict = Depends(get_user_fr
 
 @router.get("/drama/projects")
 async def drama_projects(auth: dict = Depends(get_user_from_auth)):
+    reconcile_drama_projects(auth["sub"])
     return list_drama_projects(auth["sub"])
 
 
@@ -1351,8 +1355,16 @@ async def frontend_ws(ws: WebSocket):
             task_ctx_map[task_id] = {
                 "user_id": ws_user_id,
                 "prompt": prompt,
+                "project_id": parameters.get("project_id"),
+                "shot_id": parameters.get("shot_id"),
                 "created_at": time.time(),
             }
+            try:
+                bind_video_task(task_id, ws_user_id, parameters.get("project_id"), parameters.get("shot_id"))
+            except ValueError:
+                await ws.send_text(json.dumps({"type": "TASK_REJECTED", "message": "Drama project or shot is invalid"}))
+                task_ctx_map.pop(task_id, None)
+                continue
 
             gpu["status"] = "busy"
             gpu["current_task"] = task_id
@@ -1378,6 +1390,8 @@ async def frontend_ws(ws: WebSocket):
                 "num_frames": int(parameters.get("num_frames") or parameters.get("frames") or (481 if model == "ltx-2.3" else 121)),
                 "fps": int(parameters.get("fps") or 24),
                 "seed": int(parameters.get("seed") or 42),
+                "project_id": parameters.get("project_id"),
+                "shot_id": parameters.get("shot_id"),
             }
             if model == "ltx-2.3":
                 worker_payload.update({"video_codec": "h264", "audio_codec": "aac"})
@@ -1522,6 +1536,7 @@ async def gpu_upload(
                 thumbnail_key = f"thumbnails/{user_id}/{task_id}.jpg"
                 thumbnail_url = await asyncio.to_thread(tos_upload_file, thumbnail_key, thumbnail, "image/jpeg")
         save_generation_record(task_id, user_id, prompt, public_url, video_key, thumbnail_url)
+        complete_bound_drama_shot(task_id, public_url, thumbnail_url)
 
         return {
             "status": "success",
