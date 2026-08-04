@@ -238,8 +238,8 @@ const VideoTool: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-full gap-6 p-1 overflow-hidden flex-1 tracking-tight">
-      <div className="w-full lg:w-[360px] flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-1 lg:shrink-0 min-h-0">
+    <div className="flex flex-col lg:flex-row h-auto lg:h-full gap-4 lg:gap-6 p-1 overflow-visible lg:overflow-hidden flex-1 tracking-tight">
+      <div className="w-full lg:w-[360px] flex flex-col gap-4 overflow-visible lg:overflow-y-auto custom-scrollbar pr-1 lg:shrink-0 min-h-0">
         <div className="bg-app-surface/60 p-5 rounded-3xl border border-app-border shadow-xl backdrop-blur-md">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-lg font-bold flex items-center gap-2 text-cyan-400"><Cpu className="w-4 h-4" /> {t('tool.video.title')}</h2>

@@ -194,9 +194,9 @@ const AudioTool: React.FC = () => {
   const canClick = true; 
 
   return (
-    <div className="flex flex-col lg:flex-row h-full gap-6 p-1 overflow-hidden flex-1">
+    <div className="flex flex-col lg:flex-row h-auto lg:h-full gap-4 lg:gap-6 p-1 overflow-visible lg:overflow-hidden flex-1">
       {/* Parameters Panel */}
-      <div className="w-full lg:w-[350px] flex flex-col gap-4 overflow-y-auto custom-scrollbar lg:shrink-0 min-h-0">
+      <div className="w-full lg:w-[350px] flex flex-col gap-4 overflow-visible lg:overflow-y-auto custom-scrollbar lg:shrink-0 min-h-0">
         <div className="bg-app-surface/60 p-6 rounded-[2rem] border border-app-border shadow-2xl backdrop-blur-md">
           <h2 className="text-sm font-bold text-rose-400 mb-6 uppercase tracking-widest flex items-center gap-2">
             <Mic className="w-4 h-4" /> {t('tool.audio.title')}

@@ -187,7 +187,7 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <div className="h-screen bg-app-base text-app-text flex overflow-hidden transition-colors duration-500">
+    <div className="h-[100dvh] bg-app-base text-app-text flex overflow-hidden transition-colors duration-500">
       {showIntro && (
         <div className="fixed inset-0 z-[100] bg-app-base flex flex-col items-center justify-center overflow-hidden">
           <div className="absolute inset-0 bg-grid opacity-20 pointer-events-none animate-pulse" /><div className="absolute inset-0 bg-gradient-to-t from-app-base via-transparent to-transparent z-0" />
@@ -207,24 +207,24 @@ const AppContent: React.FC = () => {
         <div className="p-4 border-t border-app-border"><p className="text-[10px] text-app-subtext font-mono text-center opacity-50">{t('app.icp')}</p></div>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        <header className="h-20 flex items-center justify-between px-4 lg:px-8 border-b border-app-border bg-app-surface/90 backdrop-blur-md z-[60] shrink-0">
+      <main className="flex-1 flex flex-col min-w-0 h-[100dvh] overflow-hidden">
+        <header className="h-16 lg:h-20 flex items-center justify-between px-2 sm:px-4 lg:px-8 border-b border-app-border bg-app-surface/90 backdrop-blur-md z-[60] shrink-0">
           <div className="flex items-center gap-4">
             <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 text-app-subtext hover:text-app-text transition-colors"><Menu size={20} /></button>
-            <div className="lg:hidden"><Logo size="sm" /></div>
+            <div className="hidden sm:block lg:hidden"><Logo size="sm" /></div>
             {currentView !== AppView.DASHBOARD && (
               <div className="hidden lg:flex items-center gap-3 animate-fade-in"><div className="w-10 h-10 rounded-xl bg-app-base flex items-center justify-center text-app-accent border border-app-border">{(() => { const tool = tools.find(t => t.id === currentView); const Icon = tool?.icon || LayoutDashboard; return <Icon size={20} />; })()}</div><div><h2 className="text-sm font-bold text-app-text tracking-wide uppercase">{tools.find(t => t.id === currentView)?.name}</h2><p className="text-[10px] text-app-subtext font-medium opacity-60">CCIOI AI MODULE</p></div></div>
             )}
           </div>
-          <div className="flex items-center gap-3 md:gap-4">
-            <div className="flex items-center gap-1 border-r border-app-border pr-3 md:pr-4 mr-1"><LanguageSelector /><ThemeSelector /></div>
+          <div className="flex items-center gap-1 sm:gap-3 md:gap-4 min-w-0">
+            <div className="flex items-center gap-0 sm:gap-1 border-r border-app-border pr-1 sm:pr-3 md:pr-4 mr-1"><LanguageSelector /><ThemeSelector /></div>
             <UserMenu onOpenAuth={() => setIsAuthModalOpen(true)} onOpenPayment={() => setIsPaymentModalOpen(true)} />
           </div>
         </header>
 
-        <div className={`flex-1 flex flex-col min-h-0 relative ${currentView === AppView.QUANTITATIVE_ANALYSIS ? 'p-0 overflow-y-auto' : 'overflow-hidden p-4 lg:p-6'}`}>
+        <div className={`flex-1 flex flex-col min-h-0 relative ${currentView === AppView.QUANTITATIVE_ANALYSIS ? 'p-0 overflow-y-auto' : 'overflow-y-auto lg:overflow-hidden p-2 sm:p-4 lg:p-6'}`}>
            {!isQuantView && <div className="fixed inset-0 overflow-hidden pointer-events-none z-0"><div className="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] bg-app-accent/5 rounded-full blur-[100px]" /><div className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] bg-app-surface-hover/20 rounded-full blur-[100px]" /></div>}
-           <div className={`relative z-10 w-full h-full flex flex-col min-h-0 ${currentView === AppView.QUANTITATIVE_ANALYSIS ? '' : 'max-w-7xl mx-auto'}`}>
+           <div className={`relative z-10 w-full min-h-full lg:h-full flex flex-col lg:min-h-0 ${currentView === AppView.QUANTITATIVE_ANALYSIS ? '' : 'max-w-7xl mx-auto'}`}>
              {renderContent()}
            </div>
         </div>

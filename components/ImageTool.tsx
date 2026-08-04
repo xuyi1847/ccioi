@@ -57,8 +57,8 @@ const ImageTool: React.FC = () => {
   };
 
   return (
-    <div className="h-full grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
-      <div className="lg:col-span-1 flex flex-col gap-6 overflow-y-auto custom-scrollbar">
+    <div className="h-auto lg:h-full grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 flex-1 min-h-0">
+      <div className="lg:col-span-1 flex flex-col gap-4 lg:gap-6 overflow-visible lg:overflow-y-auto custom-scrollbar">
         <div className="bg-app-surface/50 p-6 rounded-2xl border border-app-border shadow-xl">
           <h2 className="text-xl font-semibold mb-4 flex items-center justify-between text-purple-400">
             <span className="flex items-center gap-2"><ImageIcon className="w-5 h-5" />{t('tool.image.title')}</span>
