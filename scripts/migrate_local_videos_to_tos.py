@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.database import connection, init_database, save_generation_record
+from app.database import connection, init_database, list_generation_records, save_generation_record
 from app.local_storage import STORAGE_ROOT, read_all_history
 from app.tos_storage import configured, upload_file
 
@@ -76,6 +76,18 @@ def main() -> None:
                         "UPDATE drama_projects SET data = %s::jsonb, updated_at = NOW() WHERE id = %s",
                         (json.dumps(updated, ensure_ascii=False), project["id"]),
                     )
+    for record in list_generation_records():
+        if record.get("thumbnail_url"):
+            continue
+        with tempfile.TemporaryDirectory(prefix="ccioi-remote-thumb-") as temp_name:
+            thumbnail = Path(temp_name) / f"{record['id']}.jpg"
+            result = subprocess.run(
+                ["ffmpeg", "-y", "-ss", "0.15", "-i", record["video_url"], "-frames:v", "1", "-vf", "scale=640:-2", "-q:v", "4", str(thumbnail)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+            )
+            if result.returncode == 0 and thumbnail.is_file():
+                thumbnail_url = upload_file(f"thumbnails/{record['user_id']}/{record['id']}.jpg", thumbnail, "image/jpeg")
+                save_generation_record(record["id"], record["user_id"], record["prompt"], record["video_url"], record.get("object_key"), thumbnail_url)
     print(json.dumps({"migrated_generation_videos": migrated, "rewritten_urls": len(replacements)}))
 
 
