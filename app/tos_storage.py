@@ -31,7 +31,8 @@ def upload_stream(object_key: str, stream, content_type: str = "video/mp4") -> s
     stream.seek(0)
     _client().put_object(
         TOS_BUCKET, object_key, content=stream, content_type=content_type,
-        acl=tos.ACLType.ACL_Public_Read,
+        acl=tos.ACLType.ACL_Public_Read, cache_control="public, max-age=31536000, immutable",
+        content_disposition="inline",
     )
     return public_url(object_key)
 
@@ -40,7 +41,8 @@ def upload_file(object_key: str, source: Path, content_type: str = "video/mp4") 
     import tos
     _client().put_object_from_file(
         TOS_BUCKET, object_key, str(source), content_type=content_type,
-        acl=tos.ACLType.ACL_Public_Read,
+        acl=tos.ACLType.ACL_Public_Read, cache_control="public, max-age=31536000, immutable",
+        content_disposition="inline",
     )
     return public_url(object_key)
 

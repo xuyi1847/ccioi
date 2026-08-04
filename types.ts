@@ -48,6 +48,7 @@ export interface HistoryRecord {
   type: 'video' | 'image';
   prompt: string;
   url: string;
+  thumbnail_url?: string;
   timestamp: number;
   params?: any;
   user_id?: string;

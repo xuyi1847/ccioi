@@ -1,6 +1,8 @@
 """One-time migration: local video files/JSON metadata -> TOS/PostgreSQL."""
 import json
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -36,7 +38,16 @@ def main() -> None:
             continue
         object_key = f"videos/{user_id}/{task_id}.mp4"
         new_url = upload_file(object_key, source, "video/mp4")
-        save_generation_record(task_id, user_id, str(record.get("prompt") or ""), new_url, object_key)
+        thumbnail_url = None
+        with tempfile.TemporaryDirectory(prefix="ccioi-thumb-") as temp_name:
+            thumbnail = Path(temp_name) / f"{task_id}.jpg"
+            result = subprocess.run(
+                ["ffmpeg", "-y", "-ss", "0.15", "-i", str(source), "-frames:v", "1", "-vf", "scale=640:-2", "-q:v", "4", str(thumbnail)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+            )
+            if result.returncode == 0 and thumbnail.is_file():
+                thumbnail_url = upload_file(f"thumbnails/{user_id}/{task_id}.jpg", thumbnail, "image/jpeg")
+        save_generation_record(task_id, user_id, str(record.get("prompt") or ""), new_url, object_key, thumbnail_url)
         if old_url:
             replacements[old_url] = new_url
         migrated += 1

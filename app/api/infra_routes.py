@@ -1176,6 +1176,17 @@ async def gpu_ws(ws: WebSocket):
                     print(f"⚠️ No frontend ws for TASK_LOG, task_id={task_id}")
                 continue
 
+            if msg_type in {"TASK_PREVIEW", "task_preview"}:
+                task_id = msg.get("task_id")
+                frontend_ws = task_frontend_map.get(task_id)
+                if frontend_ws:
+                    await frontend_ws.send_text(json.dumps({
+                        "type": "TASK_PREVIEW", "task_id": task_id,
+                        "preview_url": msg.get("preview_url") or msg.get("image_url"),
+                        "progress": msg.get("progress"),
+                    }))
+                continue
+
             if msg_type == "task_finished":
                 task_id = msg.get("task_id")
 
@@ -1498,7 +1509,19 @@ async def gpu_upload(
             raise HTTPException(status_code=503, detail="TOS is not configured")
         video_key = f"videos/{user_id}/{task_id}.mp4"
         public_url = await asyncio.to_thread(tos_upload_stream, video_key, file.file, "video/mp4")
-        save_generation_record(task_id, user_id, prompt, public_url, video_key)
+        thumbnail_url = None
+        with tempfile.TemporaryDirectory(prefix="ccioi-thumb-") as temp_name:
+            thumbnail = Path(temp_name) / f"{task_id}.jpg"
+            process = await asyncio.create_subprocess_exec(
+                "ffmpeg", "-y", "-ss", "0.15", "-i", public_url, "-frames:v", "1",
+                "-vf", "scale=640:-2", "-q:v", "4", str(thumbnail),
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+            )
+            await process.communicate()
+            if process.returncode == 0 and thumbnail.is_file():
+                thumbnail_key = f"thumbnails/{user_id}/{task_id}.jpg"
+                thumbnail_url = await asyncio.to_thread(tos_upload_file, thumbnail_key, thumbnail, "image/jpeg")
+        save_generation_record(task_id, user_id, prompt, public_url, video_key, thumbnail_url)
 
         return {
             "status": "success",

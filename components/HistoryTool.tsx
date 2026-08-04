@@ -71,6 +71,7 @@ const HistoryTool: React.FC = () => {
           id: String(item.id || ''),
           prompt: item.prompt || '未保存提示词',
           url: item.video_url || item.url || '',
+          thumbnail_url: item.thumbnail_url || '',
           timestamp: normalizeTimestamp(item.created_at ?? item.timestamp),
           type: item.video_url ? 'video' : (item.type || 'video'),
           params: item.params || {},
@@ -176,15 +177,7 @@ const HistoryTool: React.FC = () => {
             {history.map((item) => (
               <article key={item.id} className="group min-w-0 bg-app-surface/60 rounded-2xl border border-app-border overflow-hidden hover:border-app-accent/50 transition-all shadow-lg">
                 <div className="aspect-video bg-black relative overflow-hidden">
-                  <video
-                    src={item.url}
-                    className="w-full h-full object-contain"
-                    muted
-                    playsInline
-                    preload="metadata"
-                    onLoadedData={(event) => { (event.currentTarget as HTMLVideoElement).currentTime = 0.01; }}
-                    onError={() => setBrokenVideos((current) => ({ ...current, [item.id]: true }))}
-                  />
+                  {item.thumbnail_url ? <img src={item.thumbnail_url} loading="lazy" className="w-full h-full object-cover" alt="视频缩略图" onError={() => setBrokenVideos((current) => ({ ...current, [item.id]: true }))} /> : <div className="w-full h-full flex items-center justify-center text-white/30"><Video size={34}/></div>}
                   <button type="button" onClick={() => setPlayingItem(item)} className="absolute inset-0 flex items-center justify-center bg-black/10 hover:bg-black/30 transition-colors" aria-label="播放视频">
                     <span className="w-12 h-12 rounded-full bg-black/60 backdrop-blur border border-white/30 flex items-center justify-center text-white group-hover:scale-110 transition-transform"><Play size={21} fill="white" className="ml-0.5" /></span>
                   </button>
@@ -221,7 +214,7 @@ const HistoryTool: React.FC = () => {
               <button onClick={() => setPlayingItem(null)} className="p-2 rounded-full bg-white/10 hover:bg-white/20 shrink-0" aria-label="关闭"><X size={20} /></button>
             </div>
             <div className="min-h-0 bg-black rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
-              <video key={playingItem.id} src={playingItem.url} className="w-full max-h-[78vh] object-contain" controls autoPlay playsInline preload="auto" />
+              <video key={playingItem.id} src={playingItem.url} poster={playingItem.thumbnail_url} className="w-full max-h-[78vh] object-contain" controls autoPlay playsInline preload="metadata" />
             </div>
           </div>
         </div>

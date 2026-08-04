@@ -131,6 +131,7 @@ def init_database() -> None:
         )
         """,
         "CREATE INDEX IF NOT EXISTS idx_generation_records_user_created ON generation_records (user_id, created_at DESC)",
+        "ALTER TABLE generation_records ADD COLUMN IF NOT EXISTS thumbnail_url TEXT",
     )
     with connection() as conn:
         with conn.cursor() as cursor:
@@ -477,19 +478,20 @@ def list_geo_reports(user_id: str, limit: int = 20) -> list[dict]:
             ]
 
 
-def save_generation_record(task_id: str, user_id: str, prompt: str, video_url: str, object_key: Optional[str] = None) -> dict:
+def save_generation_record(task_id: str, user_id: str, prompt: str, video_url: str, object_key: Optional[str] = None, thumbnail_url: Optional[str] = None) -> dict:
     with connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO generation_records (id, user_id, prompt, video_url, object_key)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO generation_records (id, user_id, prompt, video_url, object_key, thumbnail_url)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO UPDATE SET
                     user_id = EXCLUDED.user_id, prompt = EXCLUDED.prompt,
-                    video_url = EXCLUDED.video_url, object_key = EXCLUDED.object_key
-                RETURNING id, user_id, prompt, video_url, object_key, created_at
+                    video_url = EXCLUDED.video_url, object_key = EXCLUDED.object_key,
+                    thumbnail_url = COALESCE(EXCLUDED.thumbnail_url, generation_records.thumbnail_url)
+                RETURNING id, user_id, prompt, video_url, object_key, thumbnail_url, created_at
                 """,
-                (task_id, user_id, prompt or "", video_url, object_key),
+                (task_id, user_id, prompt or "", video_url, object_key, thumbnail_url),
             )
             row = cursor.fetchone()
             return {**dict(row), "user_id": str(row["user_id"]), "created_at": row["created_at"].timestamp()}
@@ -500,7 +502,7 @@ def list_generation_records(user_id: Optional[str] = None) -> list[dict]:
         with conn.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id, user_id, prompt, video_url, object_key, created_at
+                SELECT id, user_id, prompt, video_url, object_key, thumbnail_url, created_at
                 FROM generation_records
                 WHERE (%s::uuid IS NULL OR user_id = %s::uuid)
                 ORDER BY created_at DESC
@@ -517,7 +519,7 @@ def get_generation_record(task_id: str, user_id: Optional[str] = None) -> Option
     with connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
-                """SELECT id, user_id, prompt, video_url, object_key, created_at
+                """SELECT id, user_id, prompt, video_url, object_key, thumbnail_url, created_at
                    FROM generation_records
                    WHERE id = %s AND (%s::uuid IS NULL OR user_id = %s::uuid)""",
                 (task_id, user_id, user_id),
