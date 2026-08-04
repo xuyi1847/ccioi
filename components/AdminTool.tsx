@@ -31,7 +31,7 @@ interface Operation {
 const formatTime = (value?: string) => value ? new Date(value).toLocaleString() : '暂无';
 const MODULES = [
   ['chat', '对话'], ['image', '图片'], ['video', '视频'], ['audio', '音频'],
-  ['text', '文本'], ['geo', 'GEO'], ['fund', '基金'], ['history', '历史'],
+  ['text', '文本'], ['geo', 'GEO'], ['fund', '基金'], ['history', '历史'], ['drama', 'AI短剧'],
 ] as const;
 
 const AdminTool: React.FC = () => {

@@ -50,6 +50,7 @@ from app.database import (
     get_system_setting,
     list_operation_logs,
     list_users,
+    list_drama_projects,
     log_operation,
     public_user,
     list_geo_reports,
@@ -58,9 +59,12 @@ from app.database import (
     set_user_enabled,
     set_user_module_permissions,
     set_system_setting,
+    save_drama_project,
+    delete_drama_project,
     verify_password,
 )
 from app.local_storage import (
+    STORAGE_ROOT,
     cleanup_storage,
     delete_history,
     public_url as local_public_url,
@@ -196,6 +200,24 @@ class ShowcaseReq(BaseModel):
     featured: bool
 
 
+class DramaProjectReq(BaseModel):
+    id: Optional[str] = None
+    name: str
+    data: dict[str, Any]
+
+
+class DramaStoryboardReq(BaseModel):
+    script: str
+    characters: list[dict[str, Any]] = []
+    style: str = "电影感"
+    aspect_ratio: str = "9:16"
+
+
+class DramaExportReq(BaseModel):
+    project_id: str
+    shot_urls: list[str]
+
+
 class UserConfigReq(BaseModel):
     data: dict[str, Any]
     partial: bool = False
@@ -279,6 +301,94 @@ async def read_user_config(auth: dict = Depends(get_user_from_auth)):
 @router.put("/user-config")
 async def write_user_config(req: UserConfigReq, auth: dict = Depends(get_user_from_auth)):
     return save_user_config(auth["sub"], req.data, req.partial)
+
+
+@router.get("/drama/projects")
+async def drama_projects(auth: dict = Depends(get_user_from_auth)):
+    return list_drama_projects(auth["sub"])
+
+
+@router.put("/drama/projects")
+async def upsert_drama_project(req: DramaProjectReq, auth: dict = Depends(get_user_from_auth)):
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Project name is required")
+    project_id = req.id or str(uuid.uuid4())
+    try:
+        return save_drama_project(project_id, auth["sub"], name, req.data)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+
+@router.delete("/drama/projects/{project_id}")
+async def remove_drama_project(project_id: str, auth: dict = Depends(get_user_from_auth)):
+    if not delete_drama_project(project_id, auth["sub"]):
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"status": "deleted"}
+
+
+@router.post("/drama/storyboard")
+async def generate_drama_storyboard(req: DramaStoryboardReq, auth: dict = Depends(get_user_from_auth)):
+    if not req.script.strip():
+        raise HTTPException(status_code=400, detail="Script is required")
+    api_key = os.getenv("CCIOI_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="AI storyboard service is not configured")
+    client = OpenAI(api_key=api_key, base_url=os.getenv("CCIOI_BASE_URL", "https://api.deepseek.com"))
+    character_context = json.dumps(req.characters, ensure_ascii=False)
+    instruction = f"""你是AI短剧分镜导演。把剧本拆成适合视频生成的连续镜头。
+风格：{req.style}；画幅：{req.aspect_ratio}；角色资料：{character_context}
+只返回JSON对象，格式为 {{"shots": [...]}}。每个镜头必须包含：title、scene、shot_size、camera、duration（2到10秒）、prompt、dialogue、character_ids。
+prompt必须描述角色外观、动作、场景、光线、镜头运动，并保持前后连续。
+剧本：\n{req.script}"""
+    try:
+        response = client.chat.completions.create(
+            model=os.getenv("CCIOI_CHAT_MODEL", "deepseek-chat"),
+            messages=[{"role": "user", "content": instruction}],
+            response_format={"type": "json_object"},
+        )
+        content = response.choices[0].message.content or "[]"
+        parsed = json.loads(content)
+        shots = parsed if isinstance(parsed, list) else parsed.get("shots", [])
+        return {"shots": shots}
+    except Exception as exc:
+        print("drama storyboard failed:", exc)
+        raise HTTPException(status_code=502, detail=f"Storyboard generation failed: {exc}")
+
+
+@router.post("/drama/export")
+async def export_drama(req: DramaExportReq, auth: dict = Depends(get_user_from_auth)):
+    owned_ids = {item["id"] for item in list_drama_projects(auth["sub"])}
+    if req.project_id not in owned_ids:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not req.shot_urls:
+        raise HTTPException(status_code=400, detail="No completed shots to export")
+    source_files = []
+    for url in req.shot_urls:
+        filename = os.path.basename(urlparse(url).path)
+        if not filename.endswith(".mp4") or safe_id(filename[:-4], "video_id") != filename[:-4]:
+            raise HTTPException(status_code=400, detail="Invalid shot video URL")
+        path = STORAGE_ROOT / "videos" / filename
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail=f"Shot video is missing: {filename}")
+        source_files.append(path)
+    export_id = str(uuid.uuid4())
+    concat_file = STORAGE_ROOT / f"drama-{export_id}.txt"
+    output_file = STORAGE_ROOT / "videos" / f"{export_id}.mp4"
+    concat_file.write_text("".join(f"file '{path}'\n" for path in source_files), encoding="utf-8")
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file),
+            "-c:v", "libx264", "-c:a", "aac", "-movflags", "+faststart", str(output_file),
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await process.communicate()
+        if process.returncode != 0:
+            output_file.unlink(missing_ok=True)
+            raise HTTPException(status_code=500, detail=f"FFmpeg export failed: {stderr.decode(errors='ignore')[-500:]}")
+        return {"id": export_id, "public_url": local_public_url(f"videos/{export_id}.mp4")}
+    finally:
+        concat_file.unlink(missing_ok=True)
 
 
 @router.post("/chat")
@@ -1073,9 +1183,6 @@ async def frontend_ws(ws: WebSocket):
             data = json.loads(raw)
             print("📨 Frontend WS message:", data)
 
-            task_id = str(uuid.uuid4())
-            command = build_torchrun_command(data,task_id)
-            print("🧠 Torchrun command:",command)
             # 允许前端发一个 init 消息先绑定用户
             # 约定：{type:"AUTH", token:"..."} 或 {token:"..."} 都可
             if ws_user_id is None:

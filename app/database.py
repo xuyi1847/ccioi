@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 DEFAULT_MODULE_PERMISSIONS = {
     "chat": True, "image": True, "video": True, "audio": True,
-    "text": True, "geo": True, "fund": True, "history": True,
+    "text": True, "geo": True, "fund": True, "history": True, "drama": True,
 }
 
 
@@ -79,6 +79,16 @@ def init_database() -> None:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS drama_projects (
+            id UUID PRIMARY KEY,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            data JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS invite_codes (
             code TEXT PRIMARY KEY,
             active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -109,6 +119,7 @@ def init_database() -> None:
         "CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users (LOWER(email))",
         "CREATE INDEX IF NOT EXISTS idx_geo_reports_user_created ON geo_reports (user_id, created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_operation_logs_created ON operation_logs (created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_drama_projects_user_updated ON drama_projects (user_id, updated_at DESC)",
     )
     with connection() as conn:
         with conn.cursor() as cursor:
@@ -245,6 +256,41 @@ def get_system_setting(key: str, default: Any = None) -> Any:
             cursor.execute("SELECT value FROM system_settings WHERE key = %s", (key,))
             row = cursor.fetchone()
             return row["value"] if row else default
+
+
+def list_drama_projects(user_id: str) -> list[dict]:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, name, data, created_at, updated_at FROM drama_projects WHERE user_id = %s ORDER BY updated_at DESC",
+                (user_id,),
+            )
+            return [{**dict(row), "id": str(row["id"]), "created_at": row["created_at"].isoformat(), "updated_at": row["updated_at"].isoformat()} for row in cursor.fetchall()]
+
+
+def save_drama_project(project_id: str, user_id: str, name: str, data: dict) -> dict:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO drama_projects (id, user_id, name, data) VALUES (%s, %s, %s, %s::jsonb)
+                ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, data = EXCLUDED.data, updated_at = NOW()
+                WHERE drama_projects.user_id = EXCLUDED.user_id
+                RETURNING id, name, data, created_at, updated_at
+                """,
+                (project_id, user_id, name, json.dumps(data, ensure_ascii=False)),
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise ValueError("project_not_found")
+            return {**dict(row), "id": str(row["id"]), "created_at": row["created_at"].isoformat(), "updated_at": row["updated_at"].isoformat()}
+
+
+def delete_drama_project(project_id: str, user_id: str) -> bool:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("DELETE FROM drama_projects WHERE id = %s AND user_id = %s RETURNING id", (project_id, user_id))
+            return cursor.fetchone() is not None
 
 
 def set_system_setting(key: str, value: Any) -> None:

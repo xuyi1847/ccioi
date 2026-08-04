@@ -19,6 +19,7 @@ export enum AppView {
   TEXT_ANALYSIS = 'TEXT_ANALYSIS',
   HISTORY = 'HISTORY',
   ADMIN = 'ADMIN',
+  SHORT_DRAMA = 'SHORT_DRAMA',
   AMAZON_POLLUTION = 'AMAZON_POLLUTION',
   QUANTITATIVE_ANALYSIS = 'QUANTITATIVE_ANALYSIS',
 }
@@ -32,7 +33,7 @@ export interface User {
   avatar?: string;
   role: 'user' | 'super_admin';
   enabled: boolean;
-  module_permissions: Record<'chat' | 'image' | 'video' | 'audio' | 'text' | 'geo' | 'fund' | 'history', boolean>;
+  module_permissions: Record<'chat' | 'image' | 'video' | 'audio' | 'text' | 'geo' | 'fund' | 'history' | 'drama', boolean>;
 }
 
 export interface Message {

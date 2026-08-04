@@ -14,7 +14,8 @@ import {
   History,
   Zap,
   TrendingUp,
-  ShieldCheck
+  ShieldCheck,
+  Clapperboard
 } from 'lucide-react';
 import { AppView, ToolConfig } from './types';
 import ChatTool from './components/ChatTool';
@@ -26,6 +27,7 @@ import HistoryTool from './components/HistoryTool';
 import AmazonPollutionTool from './components/AmazonPollutionTool';
 import QuantTool from './components/QuantTool';
 import AdminTool from './components/AdminTool';
+import ShortDramaTool from './components/ShortDramaTool';
 import Logo from './components/Logo';
 import AuthModal from './components/AuthModal';
 import PaymentModal from './components/PaymentModal';
@@ -66,6 +68,7 @@ const AppContent: React.FC = () => {
     [AppView.AUDIO]: 'audio', [AppView.TEXT_ANALYSIS]: 'text',
     [AppView.AMAZON_POLLUTION]: 'geo', [AppView.QUANTITATIVE_ANALYSIS]: 'fund',
     [AppView.HISTORY]: 'history',
+    [AppView.SHORT_DRAMA]: 'drama',
   };
   const hasViewAccess = (view: AppView) => {
     if (!user || user.role === 'super_admin') return true;
@@ -77,6 +80,7 @@ const AppContent: React.FC = () => {
     { id: AppView.CHAT, name: t('nav.chat'), description: t('nav.chat.desc'), icon: MessageSquare, color: 'text-indigo-400' },
     { id: AppView.IMAGE, name: t('nav.image'), description: t('nav.image.desc'), icon: ImageIcon, color: 'text-purple-400' },
     { id: AppView.VIDEO, name: t('nav.video'), description: t('nav.video.desc'), icon: Video, color: 'text-cyan-400' },
+    { id: AppView.SHORT_DRAMA, name: 'AI 短剧', description: '项目化短剧生产工作台', icon: Clapperboard, color: 'text-fuchsia-400' },
     { id: AppView.AUDIO, name: t('nav.audio'), description: t('nav.audio.desc'), icon: Mic, color: 'text-rose-400' },
     { id: AppView.TEXT_ANALYSIS, name: t('nav.text'), description: t('nav.text.desc'), icon: FileText, color: 'text-emerald-400' },
     { id: AppView.AMAZON_POLLUTION, name: t('nav.amazon'), description: t('nav.amazon.desc'), icon: Zap, color: 'text-amber-500' },
@@ -126,6 +130,7 @@ const AppContent: React.FC = () => {
       case AppView.CHAT: return <ChatTool />;
       case AppView.IMAGE: return <ImageTool />;
       case AppView.VIDEO: return <VideoTool />;
+      case AppView.SHORT_DRAMA: return <ShortDramaTool />;
       case AppView.AUDIO: return <AudioTool />;
       case AppView.TEXT_ANALYSIS: return <TextTool />;
       case AppView.AMAZON_POLLUTION: return <AmazonPollutionTool />;

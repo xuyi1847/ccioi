@@ -50,6 +50,7 @@ async def audit_authenticated_operations(request: Request, call_next):
                 "history" if path == "/history" or path.startswith("/history/") else
                 "video" if path in {"/gpus", "/upload"} else
                 "fund" if path.startswith("/fund_") or path in {"/evaluate_assets", "/holdings/parse-file", "/excel/holdings/parse"} else
+                "drama" if path.startswith("/drama/") else
                 None
             )
             if module and user and user.get("role") != "super_admin":

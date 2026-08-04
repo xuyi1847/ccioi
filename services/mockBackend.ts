@@ -130,6 +130,45 @@ export const mockBackend = {
     }
   },
 
+  async getDramaProjects(token: string): Promise<any[]> {
+    const response = await fetch(`${API_BASE}/drama/projects`, { headers: { 'Authorization': `Bearer ${token}` } });
+    if (!response.ok) throw new Error('短剧项目加载失败');
+    return await response.json();
+  },
+
+  async saveDramaProject(token: string, project: any): Promise<any> {
+    const response = await fetch(`${API_BASE}/drama/projects`, {
+      method: 'PUT', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(project)
+    });
+    if (!response.ok) throw new Error('短剧项目保存失败');
+    return await response.json();
+  },
+
+  async deleteDramaProject(token: string, projectId: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/drama/projects/${projectId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+    if (!response.ok) throw new Error('短剧项目删除失败');
+  },
+
+  async generateDramaStoryboard(token: string, payload: any): Promise<any[]> {
+    const response = await fetch(`${API_BASE}/drama/storyboard`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) { const error = await response.json(); throw new Error(error.detail || 'AI分镜生成失败'); }
+    const data = await response.json();
+    return data.shots || [];
+  },
+
+  async exportDrama(token: string, projectId: string, shotUrls: string[]): Promise<string> {
+    const response = await fetch(`${API_BASE}/drama/export`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId, shot_urls: shotUrls })
+    });
+    if (!response.ok) { const error = await response.json(); throw new Error(error.detail || '成片导出失败'); }
+    return (await response.json()).public_url;
+  },
+
   async getAdminOperations(token: string): Promise<any[]> {
     const response = await fetch(`${API_BASE}/admin/operations?limit=500`, {
       headers: { 'Authorization': `Bearer ${token}` }
