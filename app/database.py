@@ -595,6 +595,7 @@ def complete_bound_drama_shot(task_id: str, video_url: str, thumbnail_url: Optio
 
 def reconcile_drama_projects(user_id: str) -> None:
     records = list_generation_records(user_id)
+    records_by_id = {str(record["id"]): record for record in records}
     with connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT id, data FROM drama_projects WHERE user_id = %s", (user_id,))
@@ -604,6 +605,17 @@ def reconcile_drama_projects(user_id: str) -> None:
                 changed = False
                 for shot in data.get("shots", []):
                     if shot.get("output_url"):
+                        continue
+                    task_id = str(shot.get("task_id") or "").strip()
+                    direct_match = records_by_id.get(task_id) if task_id else None
+                    if direct_match:
+                        shot.update({
+                            "status": "done",
+                            "output_url": direct_match["video_url"],
+                            "preview_url": direct_match.get("thumbnail_url"),
+                            "task_id": direct_match["id"],
+                        })
+                        changed = True
                         continue
                     shot_prompt = str(shot.get("prompt") or "").strip()
                     if not shot_prompt:
