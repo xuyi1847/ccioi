@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Activity, Ban, CheckCircle2, Loader2, RefreshCw, Search, ShieldCheck, Users, X } from 'lucide-react';
+import { Activity, Ban, CheckCircle2, Copy, KeyRound, Loader2, Plus, RefreshCw, Search, ShieldCheck, Users, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
 import { mockBackend } from '../services/mockBackend';
@@ -47,6 +47,10 @@ const AdminTool: React.FC = () => {
   const [permissionUser, setPermissionUser] = useState<AdminUser | null>(null);
   const [permissionDraft, setPermissionDraft] = useState<Record<string, boolean>>({});
   const [permissionsSaving, setPermissionsSaving] = useState(false);
+  const [adminView, setAdminView] = useState<'users' | 'api'>('users');
+  const [apiKeys, setApiKeys] = useState<any[]>([]);
+  const [apiTasks, setApiTasks] = useState<any[]>([]);
+  const [newApiKey, setNewApiKey] = useState('');
 
   const loadUsers = async () => {
     if (!user || user.role !== 'super_admin') return;
@@ -61,6 +65,21 @@ const AdminTool: React.FC = () => {
   };
 
   useEffect(() => { loadUsers(); }, [user?.id]);
+
+  const loadApi = async () => {
+    if (!user) return;
+    try { const [keys, tasks] = await Promise.all([mockBackend.getVideoApiKeys(user.token), mockBackend.getVideoApiTasks(user.token)]); setApiKeys(keys); setApiTasks(tasks); }
+    catch (error: any) { notify.error(error.message || '外部 API 数据加载失败'); }
+  };
+  useEffect(() => { if (adminView === 'api') loadApi(); }, [adminView]);
+
+  const createKey = async () => {
+    if (!user) return;
+    const name = prompt('请输入 API Key 名称，例如：合作方 A');
+    if (!name?.trim()) return;
+    try { const result = await mockBackend.createVideoApiKey(user.token, name.trim()); setNewApiKey(result.key); await loadApi(); }
+    catch (error: any) { notify.error(error.message); }
+  };
 
   const filteredUsers = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -131,6 +150,20 @@ const AdminTool: React.FC = () => {
         <button onClick={loadUsers} disabled={loading} className="p-2.5 rounded-xl border border-app-border bg-app-surface hover:bg-app-surface-hover text-app-text"><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /></button>
       </div>
 
+      <div className="flex gap-2 shrink-0">
+        <button onClick={() => setAdminView('users')} className={`px-4 py-2 rounded-xl text-xs font-bold ${adminView === 'users' ? 'bg-app-accent text-white' : 'bg-app-surface border border-app-border text-app-subtext'}`}>用户管理</button>
+        <button onClick={() => setAdminView('api')} className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 ${adminView === 'api' ? 'bg-app-accent text-white' : 'bg-app-surface border border-app-border text-app-subtext'}`}><KeyRound size={13}/>外部视频 API</button>
+      </div>
+
+      {adminView === 'api' ? <>
+        <div className="flex flex-wrap justify-between gap-3 rounded-2xl border border-app-border bg-app-surface/50 p-4"><div><div className="font-bold text-app-text">API Key 与外部任务</div><div className="text-[10px] text-app-subtext mt-1">接口文档：/api/docs · 请求头：X-API-Key</div></div><button onClick={createKey} className="px-3 py-2 rounded-xl bg-cyan-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus size={13}/>创建 API Key</button></div>
+        {newApiKey && <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4"><div className="text-[10px] text-amber-300 mb-2">密钥仅显示一次，请立即保存</div><div className="flex gap-2"><code className="flex-1 overflow-x-auto rounded-lg bg-black/40 p-2 text-xs text-amber-100">{newApiKey}</code><button onClick={() => { navigator.clipboard.writeText(newApiKey); notify.success('已复制'); }} className="p-2 rounded-lg bg-amber-500 text-black"><Copy size={15}/></button><button onClick={() => setNewApiKey('')} className="p-2"><X size={15}/></button></div></div>}
+        <div className="grid lg:grid-cols-2 gap-4 min-h-0 flex-1">
+          <div className="overflow-auto rounded-2xl border border-app-border bg-app-surface/50"><div className="p-3 font-bold text-xs">API Keys</div>{apiKeys.map((key) => <div key={key.id} className="border-t border-app-border p-3 flex items-center justify-between gap-3"><div className="min-w-0"><div className="text-xs font-bold">{key.name}</div><div className="text-[10px] text-app-subtext">{key.key_prefix}•••• · 最近使用 {formatTime(key.last_used_at)}</div></div><button onClick={async () => { await mockBackend.setVideoApiKeyEnabled(user.token, key.id, !key.enabled); await loadApi(); }} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold ${key.enabled ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>{key.enabled ? '已启用' : '已停用'}</button></div>)}{!apiKeys.length && <div className="p-8 text-center text-xs text-app-subtext">暂无 API Key</div>}</div>
+          <div className="overflow-auto rounded-2xl border border-app-border bg-app-surface/50"><div className="p-3 font-bold text-xs">最近外部任务</div>{apiTasks.map((task) => <div key={task.task_id} className="border-t border-app-border p-3"><div className="flex justify-between gap-2"><span className="text-xs font-bold">{task.model}</span><span className={`text-[10px] font-bold ${task.status === 'completed' ? 'text-green-400' : task.status === 'failed' ? 'text-red-400' : 'text-cyan-400'}`}>{task.status} · {task.progress}%</span></div><div className="text-[9px] text-app-subtext mt-1 truncate">{task.task_id} · {task.user_email}</div></div>)}{!apiTasks.length && <div className="p-8 text-center text-xs text-app-subtext">暂无外部任务</div>}</div>
+        </div>
+      </> : <>
+
       <div className="grid grid-cols-1 min-[380px]:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 shrink-0">
         {[['注册用户', users.length, Users], ['启用账号', enabledCount, CheckCircle2], ['停用账号', users.length - enabledCount, Ban], ['生成总数', users.reduce((sum, item) => sum + Number(item.generation_count || 0), 0), Activity]].map(([label, value, Icon]: any) => <div key={label} className="rounded-2xl border border-app-border bg-app-surface/60 p-4"><Icon size={17} className="text-cyan-400 mb-2" /><div className="text-2xl font-bold text-app-text">{value}</div><div className="text-[10px] text-app-subtext">{label}</div></div>)}
       </div>
@@ -143,6 +176,7 @@ const AdminTool: React.FC = () => {
           <tbody>{filteredUsers.map((item) => <tr key={item.id} className="border-t border-app-border hover:bg-app-surface-hover/40"><td className="p-3"><div className="font-bold text-app-text">{item.name} {item.role === 'super_admin' && <span className="ml-1 text-[9px] text-cyan-400">超级管理员</span>}</div><div className="text-[10px] text-app-subtext">{item.email}</div></td><td className="p-3"><span className={`px-2 py-1 rounded-full text-[10px] font-bold ${item.enabled ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>{item.enabled ? '使用中' : '已停用'}</span></td><td className="p-3 text-app-subtext whitespace-nowrap">{formatTime(item.created_at)}</td><td className="p-3 text-app-subtext whitespace-nowrap">{formatTime(item.last_active_at)}</td><td className="p-3 font-bold text-app-text">{item.generation_count || 0}</td><td className="p-3 font-bold text-app-text">{item.operation_count || 0}</td><td className="p-3"><div className="flex justify-end gap-2"><button onClick={() => openPermissions(item)} disabled={item.role === 'super_admin'} className="px-3 py-1.5 rounded-lg border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 disabled:opacity-30">板块权限</button><button onClick={() => showOperations(item)} className="px-3 py-1.5 rounded-lg border border-app-border hover:bg-app-surface-hover text-app-text">使用记录</button><button onClick={() => toggleUser(item)} disabled={item.role === 'super_admin' || updatingId === item.id} className={`px-3 py-1.5 rounded-lg font-bold disabled:opacity-30 ${item.enabled ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20' : 'bg-green-500/10 text-green-400 hover:bg-green-500/20'}`}>{updatingId === item.id ? '处理中' : item.enabled ? '停用' : '启用'}</button></div></td></tr>)}</tbody>
         </table>}
       </div>
+      </>}
 
       {selected && <div className="fixed inset-0 z-[10000] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setSelected(null)}><div className="w-full max-w-4xl max-h-[85vh] flex flex-col rounded-2xl border border-app-border bg-app-surface shadow-2xl" onClick={(event) => event.stopPropagation()}><div className="p-4 border-b border-app-border flex items-center justify-between"><div><div className="font-bold text-app-text">{selected.name} 的使用记录</div><div className="text-[10px] text-app-subtext">{selected.email}</div></div><button onClick={() => setSelected(null)} className="p-2 text-app-subtext hover:text-app-text"><X size={18} /></button></div><div className="flex-1 overflow-auto custom-scrollbar">{operationsLoading ? <div className="p-12 flex justify-center"><Loader2 className="animate-spin text-cyan-400" /></div> : operations.length ? <table className="w-full min-w-[650px] text-xs"><thead className="bg-app-base text-app-subtext"><tr><th className="p-3 text-left">时间</th><th className="p-3 text-left">方式</th><th className="p-3 text-left">操作路径</th><th className="p-3 text-left">状态</th></tr></thead><tbody>{operations.map((entry) => <tr key={entry.id} className="border-t border-app-border"><td className="p-3 whitespace-nowrap">{formatTime(entry.created_at)}</td><td className="p-3 font-mono">{entry.method}</td><td className="p-3 font-mono text-[11px]">{entry.path}</td><td className={`p-3 font-bold ${entry.status_code < 400 ? 'text-green-400' : 'text-red-400'}`}>{entry.status_code}</td></tr>)}</tbody></table> : <div className="p-12 text-center text-app-subtext">暂无使用记录</div>}</div></div></div>}
       {permissionUser && <div className="fixed inset-0 z-[10000] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setPermissionUser(null)}><div className="w-full max-w-lg rounded-2xl border border-app-border bg-app-surface shadow-2xl p-5" onClick={(event) => event.stopPropagation()}><div className="flex items-center justify-between mb-5"><div><div className="font-bold text-app-text">板块使用权限</div><div className="text-[10px] text-app-subtext mt-1">{permissionUser.name} · {permissionUser.email}</div></div><button onClick={() => setPermissionUser(null)} className="p-2 text-app-subtext hover:text-app-text"><X size={18} /></button></div><div className="grid grid-cols-2 gap-3">{MODULES.map(([key, label]) => <button key={key} onClick={() => setPermissionDraft((current) => ({ ...current, [key]: !current[key] }))} className={`flex items-center justify-between px-4 py-3 rounded-xl border text-sm font-bold ${permissionDraft[key] !== false ? 'border-green-500/30 bg-green-500/10 text-green-400' : 'border-red-500/30 bg-red-500/10 text-red-400'}`}><span>{label}</span><span className="text-[10px]">{permissionDraft[key] !== false ? '允许' : '禁止'}</span></button>)}</div><div className="mt-5 flex justify-end gap-2"><button onClick={() => setPermissionUser(null)} className="px-4 py-2 rounded-xl border border-app-border text-app-subtext">取消</button><button onClick={savePermissions} disabled={permissionsSaving} className="px-4 py-2 rounded-xl bg-app-accent text-white font-bold disabled:opacity-50">{permissionsSaving ? '保存中…' : '保存权限'}</button></div></div></div>}

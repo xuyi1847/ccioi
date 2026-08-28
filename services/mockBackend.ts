@@ -226,6 +226,35 @@ export const mockBackend = {
     }
   },
 
+  async getVideoApiKeys(token: string): Promise<any[]> {
+    const response = await fetch(`${API_BASE}/admin/video-api/keys`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw new Error('API Key 列表加载失败');
+    return response.json();
+  },
+
+  async createVideoApiKey(token: string, name: string): Promise<any> {
+    const response = await fetch(`${API_BASE}/admin/video-api/keys`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (!response.ok) throw new Error((await response.json()).detail || 'API Key 创建失败');
+    return response.json();
+  },
+
+  async setVideoApiKeyEnabled(token: string, keyId: string, enabled: boolean): Promise<void> {
+    const response = await fetch(`${API_BASE}/admin/video-api/keys/${keyId}`, {
+      method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    });
+    if (!response.ok) throw new Error('API Key 状态更新失败');
+  },
+
+  async getVideoApiTasks(token: string): Promise<any[]> {
+    const response = await fetch(`${API_BASE}/admin/video-api/tasks`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw new Error('外部 API 任务加载失败');
+    return response.json();
+  },
+
   async deleteHistoryItem(token: string, id: string): Promise<void> {
     const response = await fetch(`${API_BASE}/history/${id}`, {
       method: 'DELETE',

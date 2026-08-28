@@ -1,5 +1,6 @@
 # infra_routes.py
 import json
+import hashlib
 import time
 import uuid
 from typing import Dict, Optional, Tuple, Any, List
@@ -17,11 +18,13 @@ import time
 import random
 import csv
 import asyncio
+import re
 import traceback
 import math
 from playwright.sync_api import sync_playwright
 from concurrent.futures import ThreadPoolExecutor
 import os
+import secrets
 import tempfile
 import jwt
 import oss2
@@ -70,6 +73,15 @@ from app.database import (
     get_generation_record,
     list_generation_records,
     save_generation_record,
+    create_video_api_task,
+    get_video_api_task,
+    list_queued_video_api_tasks,
+    update_video_api_task,
+    authenticate_video_api_key,
+    create_video_api_key,
+    list_video_api_keys,
+    list_video_api_tasks,
+    set_video_api_key_enabled,
     verify_password,
 )
 from app.tos_storage import (
@@ -1029,6 +1041,21 @@ task_gpu_map: Dict[str, str] = {}
 # task_id -> {"user_id": str, "prompt": str, "created_at": float}
 task_ctx_map: Dict[str, dict] = {}
 
+api_dispatcher_task: Optional[asyncio.Task] = None
+
+
+def _external_api_user(
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    authorization: Optional[str] = Header(None),
+) -> dict:
+    raw_key = x_api_key or (authorization[7:].strip() if authorization and authorization.startswith("Bearer ") else None)
+    if not raw_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    user = authenticate_video_api_key(hashlib.sha256(raw_key.encode("utf-8")).hexdigest())
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or disabled API key")
+    return user
+
 def build_torchrun_command(payload: dict,taskid: str) -> str:
     """
     构建 torchrun 命令：
@@ -1104,6 +1131,168 @@ def select_idle_gpu(
     return None, None
 
 
+class ExternalVideoGenerationReq(BaseModel):
+    model: str = "wan-2.2"
+    generation_type: str = "text_to_video"
+    prompt: str
+    image_url: Optional[str] = None
+    width: int = 1280
+    height: int = 720
+    num_frames: int = 81
+    fps: int = 16
+    seed: int = 42
+    callback_url: Optional[str] = None
+
+
+class ApiKeyCreateReq(BaseModel):
+    name: str
+    user_id: Optional[str] = None
+
+
+class ApiKeyStatusReq(BaseModel):
+    enabled: bool
+
+
+def _public_api_task(task: dict) -> dict:
+    def iso(value):
+        return value.isoformat() if value else None
+    return {
+        "task_id": str(task["id"]), "status": task["status"],
+        "progress": task.get("progress", 0), "model": task["model"],
+        "gpu_id": task.get("gpu_id"), "video_url": task.get("video_url"),
+        "thumbnail_url": task.get("thumbnail_url"), "error": task.get("error"),
+        "created_at": iso(task.get("created_at")), "started_at": iso(task.get("started_at")),
+        "completed_at": iso(task.get("completed_at")),
+    }
+
+
+async def _send_api_callback(task: dict) -> None:
+    callback_url = str(task.get("callback_url") or "").strip()
+    if not callback_url:
+        return
+    try:
+        request = Request(
+            callback_url, data=json.dumps(_public_api_task(task)).encode("utf-8"),
+            headers={"Content-Type": "application/json", "User-Agent": "CCIOI-Video-Webhook/1.0"},
+            method="POST",
+        )
+        await asyncio.to_thread(lambda: build_opener().open(request, timeout=10).read())
+        update_video_api_task(str(task["id"]), task["status"], callback_status="delivered")
+    except Exception as exc:
+        update_video_api_task(str(task["id"]), task["status"], callback_status=f"failed: {str(exc)[:300]}")
+
+
+async def dispatch_queued_api_tasks() -> None:
+    while True:
+        try:
+            for task in list_queued_video_api_tasks():
+                model = str(task["model"]).lower()
+                gpu_id, gpu = select_idle_gpu(model=model)
+                if not gpu:
+                    continue
+                payload = task.get("request") or {}
+                task_id = str(task["id"])
+                worker_payload = {
+                    "type": "exec_command", "task_id": task_id,
+                    "user_id": str(task["user_id"]), "model": model,
+                    "prompt": payload["prompt"], "width": payload["width"],
+                    "height": payload["height"], "num_frames": payload["num_frames"],
+                    "fps": payload["fps"], "seed": payload["seed"],
+                    "generation_type": payload.get("generation_type", "text_to_video"),
+                }
+                if payload.get("image_url"):
+                    worker_payload["image_url"] = payload["image_url"]
+                gpu["status"] = "busy"
+                gpu["current_task"] = task_id
+                task_gpu_map[task_id] = gpu_id
+                task_ctx_map[task_id] = {
+                    "user_id": str(task["user_id"]), "prompt": payload["prompt"],
+                    "source": "external_api", "created_at": time.time(),
+                }
+                update_video_api_task(task_id, "processing", gpu_id=gpu_id, progress=1)
+                try:
+                    await gpu["ws"].send_text(json.dumps(worker_payload))
+                except Exception as exc:
+                    gpu["status"] = "idle"
+                    gpu["current_task"] = None
+                    task_gpu_map.pop(task_id, None)
+                    task_ctx_map.pop(task_id, None)
+                    update_video_api_task(task_id, "queued", gpu_id=None, error=str(exc)[:500])
+        except Exception as exc:
+            print("external video dispatcher error:", exc)
+        await asyncio.sleep(2)
+
+
+@router.post("/v1/videos/generations", status_code=202, tags=["External Video API"])
+async def create_external_video_generation(req: ExternalVideoGenerationReq, user: dict = Depends(_external_api_user)):
+    model = req.model.lower().strip()
+    if model not in {"wan-2.2", "ltx-2.3", "opensora"}:
+        raise HTTPException(status_code=422, detail="model must be wan-2.2, ltx-2.3, or opensora")
+    if not req.prompt.strip():
+        raise HTTPException(status_code=422, detail="prompt is required")
+    if req.generation_type not in {"text_to_video", "image_to_video"}:
+        raise HTTPException(status_code=422, detail="generation_type must be text_to_video or image_to_video")
+    if req.generation_type == "image_to_video" and not req.image_url:
+        raise HTTPException(status_code=422, detail="image_url is required for image_to_video")
+    for url, name in ((req.image_url, "image_url"), (req.callback_url, "callback_url")):
+        if url and not str(url).startswith("https://"):
+            raise HTTPException(status_code=422, detail=f"{name} must use https")
+        if url:
+            try:
+                _validate_public_url(str(url))
+            except Exception:
+                raise HTTPException(status_code=422, detail=f"{name} must resolve to a public address")
+    if req.width < 64 or req.height < 64 or req.num_frames < 1 or req.fps < 1:
+        raise HTTPException(status_code=422, detail="invalid video dimensions, frames, or fps")
+    if model == "ltx-2.3" and (req.num_frames > 481 or req.width % 64 or req.height % 64):
+        raise HTTPException(status_code=422, detail="LTX requires <=481 frames and dimensions divisible by 64")
+    if model == "wan-2.2" and (req.num_frames - 1) % 4:
+        raise HTTPException(status_code=422, detail="Wan 2.2 num_frames must follow 4n+1")
+    task_id = str(uuid.uuid4())
+    payload = req.model_dump(exclude={"callback_url"})
+    payload["model"] = model
+    task = create_video_api_task(task_id, str(user["id"]), model, payload, req.callback_url)
+    return _public_api_task(task)
+
+
+@router.get("/v1/videos/generations/{task_id}", tags=["External Video API"])
+async def get_external_video_generation(task_id: str, user: dict = Depends(_external_api_user)):
+    task = get_video_api_task(task_id, str(user["id"]))
+    if not task:
+        raise HTTPException(status_code=404, detail="Video task not found")
+    return _public_api_task(task)
+
+
+@router.get("/admin/video-api/keys")
+async def admin_video_api_keys(admin: dict = Depends(require_super_admin)):
+    return list_video_api_keys()
+
+
+@router.post("/admin/video-api/keys", status_code=201)
+async def admin_create_video_api_key(req: ApiKeyCreateReq, admin: dict = Depends(require_super_admin)):
+    owner_id = req.user_id or admin["sub"]
+    if not get_user_by_id(owner_id):
+        raise HTTPException(status_code=404, detail="User not found")
+    name = req.name.strip()
+    if not name or len(name) > 80:
+        raise HTTPException(status_code=422, detail="API key name must be 1-80 characters")
+    raw_key = "ccioi_" + secrets.token_urlsafe(32)
+    record = create_video_api_key(owner_id, name, raw_key[:14], hashlib.sha256(raw_key.encode("utf-8")).hexdigest())
+    return {**record, "key": raw_key}
+
+
+@router.patch("/admin/video-api/keys/{key_id}")
+async def admin_set_video_api_key_status(key_id: str, req: ApiKeyStatusReq, admin: dict = Depends(require_super_admin)):
+    if not set_video_api_key_enabled(key_id, req.enabled):
+        raise HTTPException(status_code=404, detail="API key not found")
+    return {"id": key_id, "enabled": req.enabled}
+
+
+@router.get("/admin/video-api/tasks")
+async def admin_video_api_tasks(limit: int = 200, admin: dict = Depends(require_super_admin)):
+    return [_public_api_task(task) | {"user_email": task.get("user_email")} for task in list_video_api_tasks(limit)]
+
+
 @router.get("/gpus")
 async def list_gpus(auth: dict = Depends(get_user_from_auth)):
     now = time.time()
@@ -1173,6 +1362,11 @@ async def gpu_ws(ws: WebSocket):
 
             if msg_type == "TASK_LOG":
                 task_id = msg.get("task_id")
+                if task_id and get_video_api_task(task_id):
+                    line = str(msg.get("line") or "")
+                    match = re.search(r"(?:progress|进度)\D*(\d{1,3})%?", line, re.I)
+                    if match:
+                        update_video_api_task(task_id, "processing", progress=min(99, int(match.group(1))))
                 frontend_ws = task_frontend_map.get(task_id)
                 if frontend_ws:
                     await frontend_ws.send_text(json.dumps(msg))
@@ -1211,6 +1405,12 @@ async def gpu_ws(ws: WebSocket):
 
                 frontend_ws = task_frontend_map.pop(task_id, None)
                 task_gpu_map.pop(task_id, None)
+
+                api_task = get_video_api_task(task_id) if task_id else None
+                if api_task and msg.get("status") != "success":
+                    updated = update_video_api_task(task_id, "failed", error=str(msg.get("error") or "generation failed")[:1000])
+                    if updated:
+                        asyncio.create_task(_send_api_callback(updated))
 
                 # 透传给前端
                 if frontend_ws:
@@ -1537,6 +1737,14 @@ async def gpu_upload(
                 thumbnail_url = await asyncio.to_thread(tos_upload_file, thumbnail_key, thumbnail, "image/jpeg")
         save_generation_record(task_id, user_id, prompt, public_url, video_key, thumbnail_url)
         complete_bound_drama_shot(task_id, public_url, thumbnail_url)
+        api_task = get_video_api_task(task_id, user_id)
+        if api_task:
+            updated = update_video_api_task(
+                task_id, "completed", progress=100,
+                video_url=public_url, thumbnail_url=thumbnail_url, error=None,
+            )
+            if updated:
+                asyncio.create_task(_send_api_callback(updated))
 
         return {
             "status": "success",

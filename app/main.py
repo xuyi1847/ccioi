@@ -2,8 +2,9 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
+import asyncio
 from app.api.quant_routes import router as quant_router
-from app.api.infra_routes import get_user_from_auth, router as infra_router
+from app.api.infra_routes import dispatch_queued_api_tasks, get_user_from_auth, router as infra_router
 from app.database import get_user_by_id, init_database, log_operation
 from app.local_storage import STORAGE_ROOT, init_local_storage
 
@@ -80,9 +81,11 @@ app.mount(
 
 
 @app.on_event("startup")
-def startup():
+async def startup():
+    global video_dispatcher
     init_database()
     init_local_storage()
+    video_dispatcher = asyncio.create_task(dispatch_queued_api_tasks())
 
 @app.get("/health")
 def health():

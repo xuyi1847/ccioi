@@ -133,6 +133,39 @@ def init_database() -> None:
         "CREATE INDEX IF NOT EXISTS idx_generation_records_user_created ON generation_records (user_id, created_at DESC)",
         "ALTER TABLE generation_records ADD COLUMN IF NOT EXISTS thumbnail_url TEXT",
         """
+        CREATE TABLE IF NOT EXISTS video_api_tasks (
+            id UUID PRIMARY KEY,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            model TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'queued',
+            progress INTEGER NOT NULL DEFAULT 0,
+            request JSONB NOT NULL DEFAULT '{}'::jsonb,
+            gpu_id TEXT,
+            video_url TEXT,
+            thumbnail_url TEXT,
+            error TEXT,
+            callback_url TEXT,
+            callback_status TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            started_at TIMESTAMPTZ,
+            completed_at TIMESTAMPTZ,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_video_api_tasks_status_created ON video_api_tasks (status, created_at)",
+        """
+        CREATE TABLE IF NOT EXISTS video_api_keys (
+            id UUID PRIMARY KEY,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            key_prefix TEXT NOT NULL,
+            key_hash TEXT NOT NULL UNIQUE,
+            enabled BOOLEAN NOT NULL DEFAULT TRUE,
+            last_used_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS video_task_bindings (
             task_id TEXT PRIMARY KEY,
             user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -154,6 +187,9 @@ def init_database() -> None:
             cursor.execute(
                 "UPDATE users SET role = 'super_admin', updated_at = NOW() WHERE LOWER(email) = LOWER(%s)",
                 ("xuyi1847@gmail.com",),
+            )
+            cursor.execute(
+                "UPDATE video_api_tasks SET status = 'queued', gpu_id = NULL, updated_at = NOW() WHERE status = 'processing'"
             )
 
 
@@ -504,6 +540,115 @@ def save_generation_record(task_id: str, user_id: str, prompt: str, video_url: s
             )
             row = cursor.fetchone()
             return {**dict(row), "user_id": str(row["user_id"]), "created_at": row["created_at"].timestamp()}
+
+
+def create_video_api_task(task_id: str, user_id: str, model: str, request: dict, callback_url: Optional[str]) -> dict:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO video_api_tasks (id, user_id, model, request, callback_url)
+                   VALUES (%s, %s, %s, %s::jsonb, %s)
+                   RETURNING *""",
+                (task_id, user_id, model, json.dumps(request, ensure_ascii=False), callback_url),
+            )
+            return dict(cursor.fetchone())
+
+
+def get_video_api_task(task_id: str, user_id: Optional[str] = None) -> Optional[dict]:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """SELECT * FROM video_api_tasks
+                   WHERE id = %s AND (%s::uuid IS NULL OR user_id = %s::uuid)""",
+                (task_id, user_id, user_id),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+
+def list_queued_video_api_tasks(limit: int = 20) -> list[dict]:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM video_api_tasks WHERE status = 'queued' ORDER BY created_at LIMIT %s",
+                (max(1, min(limit, 100)),),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+
+def update_video_api_task(task_id: str, status: str, **fields: Any) -> Optional[dict]:
+    allowed = {"progress", "gpu_id", "video_url", "thumbnail_url", "error", "callback_status"}
+    values = {key: value for key, value in fields.items() if key in allowed}
+    assignments = ["status = %s", "updated_at = NOW()"]
+    params: list[Any] = [status]
+    for key, value in values.items():
+        assignments.append(f"{key} = %s")
+        params.append(value)
+    if status == "processing":
+        assignments.append("started_at = COALESCE(started_at, NOW())")
+    if status in {"completed", "failed", "cancelled"}:
+        assignments.append("completed_at = NOW()")
+    params.append(task_id)
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE video_api_tasks SET {', '.join(assignments)} WHERE id = %s RETURNING *",
+                params,
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+
+def create_video_api_key(user_id: str, name: str, key_prefix: str, key_hash: str) -> dict:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO video_api_keys (id, user_id, name, key_prefix, key_hash)
+                   VALUES (%s, %s, %s, %s, %s) RETURNING id, user_id, name, key_prefix, enabled, last_used_at, created_at""",
+                (str(__import__("uuid").uuid4()), user_id, name, key_prefix, key_hash),
+            )
+            return dict(cursor.fetchone())
+
+
+def authenticate_video_api_key(key_hash: str) -> Optional[dict]:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """UPDATE video_api_keys k SET last_used_at = NOW()
+                   FROM users u WHERE k.key_hash = %s AND k.enabled = TRUE AND u.id = k.user_id AND u.enabled = TRUE
+                   RETURNING u.*""",
+                (key_hash,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+
+def list_video_api_keys() -> list[dict]:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """SELECT k.id, k.user_id, k.name, k.key_prefix, k.enabled, k.last_used_at, k.created_at,
+                          u.email AS user_email FROM video_api_keys k JOIN users u ON u.id = k.user_id
+                   ORDER BY k.created_at DESC"""
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+
+def set_video_api_key_enabled(key_id: str, enabled: bool) -> bool:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("UPDATE video_api_keys SET enabled = %s WHERE id = %s RETURNING id", (enabled, key_id))
+            return bool(cursor.fetchone())
+
+
+def list_video_api_tasks(limit: int = 200) -> list[dict]:
+    with connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """SELECT t.*, u.email AS user_email FROM video_api_tasks t JOIN users u ON u.id = t.user_id
+                   ORDER BY t.created_at DESC LIMIT %s""", (max(1, min(limit, 1000)),),
+            )
+            return [dict(row) for row in cursor.fetchall()]
 
 
 def list_generation_records(user_id: Optional[str] = None) -> list[dict]:
