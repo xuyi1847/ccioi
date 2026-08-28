@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, Calendar, Download, ExternalLink, History, Loader2, Lock, Play, RefreshCcw, ShieldCheck, Star, Trash2, Video, X } from 'lucide-react';
+import { Activity, Calendar, Download, ExternalLink, Film, History, Loader2, Lock, Play, RefreshCcw, Search, ShieldCheck, Star, Trash2, Video, X } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
@@ -35,7 +35,16 @@ const HistoryTool: React.FC = () => {
   const [operations, setOperations] = useState<OperationRecord[]>([]);
   const [showcaseIds, setShowcaseIds] = useState<string[]>([]);
   const [showcaseUpdating, setShowcaseUpdating] = useState('');
+  const [query, setQuery] = useState('');
+  const [modelFilter, setModelFilter] = useState('all');
   const isAdmin = user?.role === 'super_admin';
+
+  const modelName = (item: HistoryRecord) => String((item.params as any)?.model || 'AI Video');
+  const availableModels = Array.from(new Set(history.map(modelName))).sort();
+  const visibleHistory = history.filter((item) => {
+    const matchesQuery = !query.trim() || item.prompt.toLowerCase().includes(query.trim().toLowerCase());
+    return matchesQuery && (modelFilter === 'all' || modelName(item) === modelFilter);
+  });
 
   useEffect(() => {
     if (user) loadData();
@@ -133,10 +142,10 @@ const HistoryTool: React.FC = () => {
 
   return (
     <div className="h-auto lg:h-full min-h-0 flex flex-col gap-3 sm:gap-5 animate-fade-in tracking-tight">
-      <div className="flex items-center justify-between gap-4 shrink-0">
+      <div className="flex flex-wrap items-end justify-between gap-4 shrink-0">
         <div>
-          <h2 className="text-xl sm:text-2xl font-bold text-app-text flex items-center gap-3"><History className="text-app-accent" size={26} />{t('tool.history.title')}</h2>
-          <p className="text-app-subtext text-xs sm:text-sm mt-1">{isLoading ? '正在同步…' : t('tool.history.video_count').replace('{{count}}', history.length.toString())}</p>
+          <h2 className="text-xl sm:text-2xl font-bold text-app-text flex items-center gap-3"><Film className="text-app-accent" size={26} />内容管理</h2>
+          <p className="text-app-subtext text-xs sm:text-sm mt-1">管理、预览和发布生成内容 · {isLoading ? '正在同步…' : `${history.length} 个作品`}</p>
         </div>
         <button onClick={loadData} disabled={isLoading} className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-app-surface-hover hover:bg-app-border text-app-text rounded-xl text-xs font-bold border border-app-border disabled:opacity-50">
           <RefreshCcw size={14} className={isLoading ? 'animate-spin' : ''} /><span className="hidden sm:inline">刷新</span>
@@ -157,6 +166,19 @@ const HistoryTool: React.FC = () => {
         </div>
       )}
 
+      {view !== 'operations' && (
+        <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+          <label className="relative flex-1 max-w-xl">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-app-subtext" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索提示词…" className="w-full h-10 pl-9 pr-3 rounded-xl border border-app-border bg-app-surface/60 text-xs text-app-text outline-none focus:border-app-accent/70" />
+          </label>
+          <select value={modelFilter} onChange={(event) => setModelFilter(event.target.value)} className="h-10 px-3 rounded-xl border border-app-border bg-app-surface/60 text-xs text-app-text outline-none">
+            <option value="all">全部模型</option>
+            {availableModels.map((model) => <option key={model} value={model}>{model}</option>)}
+          </select>
+        </div>
+      )}
+
       <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1 sm:pr-2 pb-10">
         {isLoading && history.length === 0 && operations.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center"><Loader2 className="w-12 h-12 text-app-accent animate-spin opacity-30" /><p className="mt-4 text-app-subtext text-xs">正在读取历史记录…</p></div>
@@ -173,13 +195,17 @@ const HistoryTool: React.FC = () => {
         ) : history.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-12 bg-app-surface/30 rounded-3xl border border-app-border border-dashed"><div className="w-20 h-20 bg-app-base rounded-full flex items-center justify-center mb-6 text-app-subtext/20"><Video size={40} /></div><p className="text-app-subtext max-w-xs">{t('tool.history.empty')}</p></div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5 items-start">
-            {history.map((item) => (
-              <article key={item.id} className="group min-w-0 bg-app-surface/60 rounded-2xl border border-app-border overflow-hidden hover:border-app-accent/50 transition-all shadow-lg">
+          <div className="grid grid-cols-1 min-[560px]:grid-cols-2 xl:grid-cols-3 gap-3 lg:gap-4 items-start">
+            {visibleHistory.map((item) => (
+              <article key={item.id} className="group min-w-0 bg-app-surface/55 rounded-xl border border-app-border overflow-hidden hover:border-app-accent/60 hover:-translate-y-0.5 transition-all duration-200 shadow-lg shadow-black/10">
                 <div className="aspect-video bg-black relative overflow-hidden">
-                  {item.thumbnail_url ? <img src={item.thumbnail_url} loading="lazy" className="w-full h-full object-cover" alt="视频缩略图" onError={() => setBrokenVideos((current) => ({ ...current, [item.id]: true }))} /> : <div className="w-full h-full flex items-center justify-center text-white/30"><Video size={34}/></div>}
+                  {item.thumbnail_url && !brokenVideos[item.id] ? <img src={item.thumbnail_url} loading="lazy" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" alt="视频缩略图" onError={() => setBrokenVideos((current) => ({ ...current, [item.id]: true }))} /> : <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-950 to-cyan-950/40 text-white/25"><Video size={34}/></div>}
+                  <div className="absolute left-2 top-2 flex items-center gap-1.5">
+                    <span className="rounded-md border border-white/15 bg-black/65 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-white backdrop-blur">{modelName(item)}</span>
+                    <span className="rounded-md border border-emerald-400/20 bg-emerald-950/70 px-2 py-1 text-[9px] font-bold text-emerald-300 backdrop-blur">已完成</span>
+                  </div>
                   <button type="button" onClick={() => setPlayingItem(item)} className="absolute inset-0 flex items-center justify-center bg-black/10 hover:bg-black/30 transition-colors" aria-label="播放视频">
-                    <span className="w-12 h-12 rounded-full bg-black/60 backdrop-blur border border-white/30 flex items-center justify-center text-white group-hover:scale-110 transition-transform"><Play size={21} fill="white" className="ml-0.5" /></span>
+                    <span className="w-11 h-11 rounded-full bg-black/65 backdrop-blur border border-white/30 flex items-center justify-center text-white opacity-90 sm:opacity-0 sm:group-hover:opacity-100 group-hover:scale-105 transition-all"><Play size={19} fill="white" className="ml-0.5" /></span>
                   </button>
                   <div className="absolute top-2 right-2 flex gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                     <a href={item.url} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()} className="p-2 bg-black/70 rounded-full text-white hover:bg-app-accent"><ExternalLink size={13} /></a>
@@ -187,21 +213,22 @@ const HistoryTool: React.FC = () => {
                   </div>
                   {brokenVideos[item.id] && <div className="absolute inset-x-0 bottom-0 bg-red-950/90 text-red-300 text-[10px] px-3 py-2 text-center">预览加载失败，点击播放重试</div>}
                 </div>
-                <div className="p-4">
+                <div className="p-3">
                   {view === 'all' && <div className="mb-2 text-[10px] text-cyan-400 truncate">{item.user_name || '未知用户'} · {item.user_email || item.user_id}</div>}
-                  <p className="text-sm text-app-text font-medium line-clamp-2 min-h-10">{item.prompt}</p>
-                  <div className="mt-3 flex items-center justify-between gap-2 text-[10px] text-app-subtext">
+                  <p className="text-xs leading-5 text-app-text font-medium line-clamp-2 min-h-10">{item.prompt}</p>
+                  <div className="mt-2.5 flex items-center justify-between gap-2 text-[9px] text-app-subtext">
                     <span className="flex items-center gap-1 truncate"><Calendar size={11} />{formatDate(item.timestamp)}</span>
-                    <span className="text-app-accent font-bold uppercase shrink-0">{item.type}</span>
+                    <span className="text-app-accent font-bold uppercase shrink-0">MP4</span>
                   </div>
-                  <div className={`mt-3 grid ${view === 'all' ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
-                    <button onClick={() => setPlayingItem(item)} className="py-2 bg-app-accent hover:bg-app-accent-hover rounded-lg text-[11px] font-bold text-white flex items-center justify-center gap-1.5"><Play size={12} />播放</button>
-                    <a href={item.url} download className="py-2 bg-app-base hover:bg-app-surface-hover border border-app-border rounded-lg text-[11px] font-bold text-app-text flex items-center justify-center gap-1.5"><Download size={12} />下载</a>
+                  <div className={`mt-2.5 grid ${view === 'all' ? 'grid-cols-3' : 'grid-cols-2'} gap-1.5`}>
+                    <button onClick={() => setPlayingItem(item)} className="py-1.5 bg-app-accent hover:bg-app-accent-hover rounded-lg text-[10px] font-bold text-white flex items-center justify-center gap-1.5"><Play size={11} />播放</button>
+                    <a href={item.url} download className="py-1.5 bg-app-base hover:bg-app-surface-hover border border-app-border rounded-lg text-[10px] font-bold text-app-text flex items-center justify-center gap-1.5"><Download size={11} />下载</a>
                     {view === 'all' && <button onClick={() => toggleShowcase(item)} disabled={showcaseUpdating === item.id} className={`py-2 border rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 ${showcaseIds.includes(item.id) ? 'border-amber-400/50 bg-amber-500/10 text-amber-400' : 'border-app-border bg-app-base text-app-subtext hover:text-app-text'}`}><Star size={12} fill={showcaseIds.includes(item.id) ? 'currentColor' : 'none'} />{showcaseUpdating === item.id ? '更新中' : showcaseIds.includes(item.id) ? '取消首页' : '首页展示'}</button>}
                   </div>
                 </div>
               </article>
             ))}
+            {visibleHistory.length === 0 && <div className="col-span-full rounded-2xl border border-dashed border-app-border p-12 text-center text-xs text-app-subtext">没有符合筛选条件的内容</div>}
           </div>
         )}
       </div>
