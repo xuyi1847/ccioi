@@ -1104,7 +1104,11 @@ def _gpu_supported_models(info: dict) -> list[str]:
 
 
 def _gpu_supports_model(info: dict, model: str) -> bool:
-    return model.lower() in _gpu_supported_models(info)
+    requested = model.lower()
+    supported = _gpu_supported_models(info)
+    if requested == "wan-2.2":
+        return any(item == requested or item.startswith("wan-2.2-") for item in supported)
+    return requested in supported
 
 
 def select_idle_gpu(
