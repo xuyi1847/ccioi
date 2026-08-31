@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CCIOI 视频生成 API 接入文档</title>
+  <style>
+    :root{color-scheme:dark;--bg:#080b12;--card:#111722;--line:#253044;--text:#e8eef8;--muted:#94a3b8;--cyan:#22d3ee}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.7 system-ui,-apple-system,"PingFang SC",sans-serif}.wrap{max-width:980px;margin:auto;padding:32px 20px 80px}h1{font-size:30px;margin:0 0 6px}h2{margin-top:36px;border-bottom:1px solid var(--line);padding-bottom:8px}h3{margin-top:24px;color:#bae6fd}.muted{color:var(--muted)}.tag{display:inline-block;padding:3px 9px;border:1px solid #155e75;border-radius:20px;color:var(--cyan);margin-right:6px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin:14px 0}code{font-family:ui-monospace,SFMono-Regular,monospace}pre{overflow:auto;background:#030712;border:1px solid var(--line);border-radius:10px;padding:14px;color:#d1fae5}table{width:100%;border-collapse:collapse;display:block;overflow:auto}th,td{padding:9px 12px;border:1px solid var(--line);text-align:left;white-space:nowrap}th{background:#101827}a{color:var(--cyan)}
+  </style>
+</head>
+<body><main class="wrap">
+  <h1>CCIOI 视频生成 API</h1>
+  <p class="muted">REST API 接入手册 · 异步任务 · T2V / I2V · TOS 输出</p>
+  <p><span class="tag">Wan 2.2</span><span class="tag">LTX 2.3</span><span class="tag">OpenSora</span></p>
+
+  <h2>1. 基本信息</h2>
+  <div class="card"><b>Base URL</b>：<code>https://www.ccioi.com/api</code><br/><b>Content-Type</b>：<code>application/json</code><br/><b>鉴权</b>：请求头 <code>X-API-Key: ccioi_xxx</code>，也支持 <code>Authorization: Bearer ccioi_xxx</code>。</div>
+  <p>API Key 由 CCIOI 超级管理员在“管理员控制台 → 外部视频 API”中创建。密钥仅在创建时显示一次。</p>
+
+  <h2>2. 创建视频任务</h2>
+  <p><code>POST /v1/videos/generations</code>，成功返回 HTTP <code>202</code>。</p>
+  <h3>文生视频 T2V</h3>
+  <pre>curl -X POST 'https://www.ccioi.com/api/v1/videos/generations' \
+  -H 'X-API-Key: ccioi_your_key' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "wan-2.2",
+    "generation_type": "text_to_video",
+    "prompt": "A cinematic spacecraft flying above an alien ocean",
+    "width": 1280,
+    "height": 720,
+    "num_frames": 81,
+    "fps": 16,
+    "seed": 42
+  }'</pre>
+  <h3>图生视频 I2V</h3>
+  <pre>curl -X POST 'https://www.ccioi.com/api/v1/videos/generations' \
+  -H 'X-API-Key: ccioi_your_key' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "wan-2.2",
+    "generation_type": "image_to_video",
+    "prompt": "The camera slowly pushes forward, cinematic lighting",
+    "image_url": "https://example.com/reference.jpg",
+    "width": 1280,
+    "height": 720,
+    "num_frames": 81,
+    "fps": 16,
+    "seed": 42,
+    "callback_url": "https://example.com/webhooks/ccioi"
+  }'</pre>
+  <h3>请求字段</h3>
+  <table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody>
+    <tr><td>model</td><td>string</td><td>wan-2.2、ltx-2.3、opensora</td></tr>
+    <tr><td>generation_type</td><td>string</td><td>text_to_video 或 image_to_video</td></tr>
+    <tr><td>prompt</td><td>string</td><td>必填，视频描述</td></tr>
+    <tr><td>image_url</td><td>string</td><td>I2V 必填，必须是公网 HTTPS 地址</td></tr>
+    <tr><td>width / height</td><td>integer</td><td>输出分辨率</td></tr>
+    <tr><td>num_frames</td><td>integer</td><td>Wan 必须满足 4n+1；LTX 最大 481</td></tr>
+    <tr><td>fps</td><td>integer</td><td>输出帧率</td></tr>
+    <tr><td>seed</td><td>integer</td><td>随机种子</td></tr>
+    <tr><td>callback_url</td><td>string</td><td>可选，任务结束后 POST 通知，必须是公网 HTTPS</td></tr>
+  </tbody></table>
+  <h3>提交响应</h3><pre>{
+  "task_id": "4c78...",
+  "status": "queued",
+  "progress": 0,
+  "model": "wan-2.2",
+  "video_url": null,
+  "thumbnail_url": null
+}</pre>
+
+  <h2>3. 查询任务</h2>
+  <p><code>GET /v1/videos/generations/{task_id}</code></p>
+  <pre>curl 'https://www.ccioi.com/api/v1/videos/generations/TASK_ID' \
+  -H 'X-API-Key: ccioi_your_key'</pre>
+  <p>状态：<code>queued</code> 排队、<code>processing</code> 生成中、<code>completed</code> 完成、<code>failed</code> 失败。</p>
+  <pre>{
+  "task_id": "4c78...",
+  "status": "completed",
+  "progress": 100,
+  "model": "wan-2.2",
+  "gpu_id": "wan-a100-01",
+  "video_url": "https://ccioi.tos-cn-beijing.volces.com/videos/...mp4",
+  "thumbnail_url": "https://ccioi.tos-cn-beijing.volces.com/thumbnails/...jpg",
+  "error": null
+}</pre>
+
+  <h2>4. Webhook</h2>
+  <p>填写 <code>callback_url</code> 后，任务完成或失败时 CCIOI 会向该地址发送一次 JSON POST，请返回任意 2xx。回调体与查询接口响应一致。</p>
+
+  <h2>5. 错误码</h2>
+  <table><thead><tr><th>HTTP</th><th>含义</th></tr></thead><tbody><tr><td>401</td><td>API Key 无效或已停用</td></tr><tr><td>404</td><td>任务不存在或不属于该 Key 的账号</td></tr><tr><td>422</td><td>参数不符合模型要求</td></tr><tr><td>503</td><td>服务暂不可用</td></tr></tbody></table>
+  <p class="muted">交互式 OpenAPI 文档：<a href="/api/docs">/api/docs</a></p>
+</main></body></html>
