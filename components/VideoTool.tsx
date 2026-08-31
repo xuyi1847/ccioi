@@ -21,7 +21,7 @@ const CONFIG_FILES = [
 const COND_TYPES = ['None', 'i2v_head', 'i2v_tail', 'i2v_loop'];
 
 interface TaskLog { stream: 'stdout' | 'stderr'; line: string; }
-type VideoModel = 'opensora' | 'ltx-2.3';
+type VideoModel = 'ccioi-standard' | 'ccioi-speed';
 interface GpuNode {
   id: string;
   name: string;
@@ -39,7 +39,7 @@ const VideoTool: React.FC = () => {
   const { user } = useAuth();
   
   const [prompt, setPrompt] = useState('A futuristic landscape with flying vehicles and neon structures');
-  const [videoModel, setVideoModel] = useState<VideoModel>('opensora');
+  const [videoModel, setVideoModel] = useState<VideoModel>('ccioi-standard');
   const [configFile, setConfigFile] = useState(CONFIG_FILES[0]);
   const [condType, setCondType] = useState('None');
   const [numSteps, setNumSteps] = useState(40);
@@ -82,7 +82,7 @@ const VideoTool: React.FC = () => {
   }, [refImage]);
 
   useEffect(() => {
-    if (videoModel === 'ltx-2.3') {
+    if (videoModel === 'ccioi-speed') {
       setWidth(1536);
       setHeight(1024);
       setNumFrames(481);
@@ -202,11 +202,11 @@ const VideoTool: React.FC = () => {
     if (!user) { notify.error("Authorization required."); return; }
     if (isUploading) { notify.warning("Asset sync in progress..."); return; }
     if (refImage && !refImageUrl) { notify.error("图片尚未上传成功，请重新选择图片。"); return; }
-    if (videoModel === 'ltx-2.3' && (numFrames < 1 || numFrames > 481)) {
-      notify.error("LTX 帧数必须在 1 到 481 之间。"); return;
+    if (videoModel === 'ccioi-speed' && (numFrames < 1 || numFrames > 481)) {
+      notify.error("CCIOI Speed 帧数必须在 1 到 481 之间。"); return;
     }
-    if (videoModel === 'ltx-2.3' && (width % 64 !== 0 || height % 64 !== 0)) {
-      notify.error("LTX 分辨率的宽和高必须是 64 的倍数。"); return;
+    if (videoModel === 'ccioi-speed' && (width % 64 !== 0 || height % 64 !== 0)) {
+      notify.error("CCIOI Speed 分辨率的宽和高必须是 64 的倍数。"); return;
     }
     setIsGenerating(true);
     setGeneratedVideoUrl(null);
@@ -222,11 +222,11 @@ const VideoTool: React.FC = () => {
           frames: numFrames, num_frames: numFrames, ratio: aspectRatio, width, height, fps,
           seed, nproc_per_node: nprocPerNode, motion_score: motionScore,
           ref_image: refImageUrl,
-          image_url: videoModel === 'ltx-2.3' ? refImageUrl : undefined,
-          image_frame: videoModel === 'ltx-2.3' && refImageUrl ? imageFrame : undefined,
-          image_strength: videoModel === 'ltx-2.3' && refImageUrl ? imageStrength : undefined,
-          video_codec: videoModel === 'ltx-2.3' ? 'h264' : undefined,
-          audio_codec: videoModel === 'ltx-2.3' ? 'aac' : undefined,
+          image_url: videoModel === 'ccioi-speed' ? refImageUrl : undefined,
+          image_frame: videoModel === 'ccioi-speed' && refImageUrl ? imageFrame : undefined,
+          image_strength: videoModel === 'ccioi-speed' && refImageUrl ? imageStrength : undefined,
+          video_codec: videoModel === 'ccioi-speed' ? 'h264' : undefined,
+          audio_codec: videoModel === 'ccioi-speed' ? 'aac' : undefined,
         }
       });
       notify.info("Task dispatched to CCIOI Cluster.");
@@ -252,8 +252,8 @@ const VideoTool: React.FC = () => {
               <label className="text-[9px] text-app-subtext uppercase font-bold block mb-2">视频模型服务</label>
               <div className="grid grid-cols-2 gap-2">
                 {([
-                  { id: 'opensora', label: 'OpenSora' },
-                  { id: 'ltx-2.3', label: 'LTX 2.3' },
+                  { id: 'ccioi-standard', label: 'CCIOI Standard' },
+                  { id: 'ccioi-speed', label: 'CCIOI Speed' },
                 ] as Array<{ id: VideoModel; label: string }>).map((model) => (
                   <button
                     type="button"
@@ -274,7 +274,7 @@ const VideoTool: React.FC = () => {
               <div className="flex items-center justify-between mb-2.5">
                 <div>
                   <label className="text-[11px] text-cyan-300 font-bold flex items-center gap-1.5"><Cpu size={13} /> 选择生成 GPU</label>
-                  <div className="text-[8px] text-app-subtext mt-0.5">{gpuNodes.filter((node) => node.status === 'idle' && (node.supported_models || ['opensora']).includes(videoModel)).length} 台可用 / {gpuNodes.length} 台已连接</div>
+                  <div className="text-[8px] text-app-subtext mt-0.5">{gpuNodes.filter((node) => node.status === 'idle' && (node.supported_models || ['ccioi-standard']).includes(videoModel)).length} 台可用 / {gpuNodes.length} 台已连接</div>
                 </div>
                 <button
                   type="button"
@@ -297,7 +297,7 @@ const VideoTool: React.FC = () => {
                   <span className={`w-2 h-2 rounded-full border ${selectedGpuId === '' ? 'bg-cyan-400 border-cyan-300' : 'border-app-subtext'}`} />
                 </button>
                 {gpuNodes.map((node) => {
-                  const compatible = (node.supported_models || ['opensora']).includes(videoModel);
+                  const compatible = (node.supported_models || ['ccioi-standard']).includes(videoModel);
                   const available = node.status === 'idle' && compatible;
                   const selected = selectedGpuId === node.id;
                   return (
@@ -327,7 +327,7 @@ const VideoTool: React.FC = () => {
                 {isOptimizing && <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] rounded-xl flex items-center justify-center"><Loader2 size={16} className="text-cyan-400 animate-spin" /></div>}
               </div>
             </div>
-            {videoModel === 'opensora' && (
+            {videoModel === 'ccioi-standard' && (
               <>
                 <div className="grid grid-cols-2 gap-3">
                   <div><label className="block text-[9px] font-bold text-app-subtext uppercase tracking-widest mb-1">{t('tool.video.config')}</label>
@@ -339,28 +339,28 @@ const VideoTool: React.FC = () => {
                 </div>
               </>
             )}
-            <div><label className="block text-[10px] font-bold text-app-subtext uppercase tracking-widest mb-1.5">{videoModel === 'ltx-2.3' ? '图生视频（可选）' : t('tool.video.ref_image')}</label>
+            <div><label className="block text-[10px] font-bold text-app-subtext uppercase tracking-widest mb-1.5">{videoModel === 'ccioi-speed' ? '图生视频（可选）' : t('tool.video.ref_image')}</label>
               <div onClick={() => !refImage && !isUploading && fileInputRef.current?.click()} className="aspect-video bg-app-base border border-dashed border-app-border rounded-xl flex items-center justify-center cursor-pointer overflow-hidden group">
                 {isUploading ? <div className="flex flex-col items-center gap-1"><Loader2 className="animate-spin text-cyan-400" size={16} /><span className="text-[8px] text-app-subtext uppercase font-bold">正在上传</span></div> :
                   refImage ? <div className="relative w-full h-full"><img src={refImage} alt="图生视频参考图" className="w-full h-full object-contain" /><button onClick={(e) => {e.stopPropagation(); setRefImage(null); setRefImageUrl(null); if (fileInputRef.current) fileInputRef.current.value = '';}} className="absolute top-1.5 right-1.5 p-1 bg-black/60 rounded-full text-red-400"><Trash2 size={12}/></button></div> : <div className="flex flex-col items-center gap-2 text-app-subtext"><ImageIcon className="opacity-30" size={22} /><span className="text-[9px]">点击上传参考图片</span></div>}
                 <input type="file" ref={fileInputRef} onChange={handleImageUpload} className="hidden" accept="image/*" />
               </div>
             </div>
-            {videoModel === 'ltx-2.3' && refImage && (
+            {videoModel === 'ccioi-speed' && refImage && (
               <div className="grid grid-cols-2 gap-2.5 p-2.5 bg-cyan-500/5 rounded-xl border border-cyan-500/20">
                 <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">图片帧位置</label><input type="number" min={0} max={Math.max(0, numFrames - 1)} value={imageFrame} onChange={e => setImageFrame(Math.min(Math.max(0, parseInt(e.target.value) || 0), Math.max(0, numFrames - 1)))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
                 <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">图片强度</label><input type="number" min={0} max={1} step={0.05} value={imageStrength} onChange={e => setImageStrength(Math.min(1, Math.max(0, Number(e.target.value) || 0)))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
               </div>
             )}
             <div className="grid grid-cols-2 gap-2.5 p-2.5 bg-app-base/30 rounded-xl border border-app-border">
-              <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.frames')}{videoModel === 'ltx-2.3' ? '（最大 481）' : ''}</label><input type="number" min={1} max={videoModel === 'ltx-2.3' ? 481 : undefined} value={numFrames} onChange={e => setNumFrames(parseInt(e.target.value) || 1)} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
+              <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.frames')}{videoModel === 'ccioi-speed' ? '（最大 481）' : ''}</label><input type="number" min={1} max={videoModel === 'ccioi-speed' ? 481 : undefined} value={numFrames} onChange={e => setNumFrames(parseInt(e.target.value) || 1)} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
               <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.fps')}</label><input type="number" value={fps} onChange={e => setFps(parseInt(e.target.value))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
-              <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">Width{videoModel === 'ltx-2.3' ? '（64 倍数）' : ''}</label><input type="number" min={64} step={videoModel === 'ltx-2.3' ? 64 : 32} value={width} onChange={e => setWidth(parseInt(e.target.value) || (videoModel === 'ltx-2.3' ? 1536 : 512))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
-              <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">Height{videoModel === 'ltx-2.3' ? '（64 倍数）' : ''}</label><input type="number" min={64} step={videoModel === 'ltx-2.3' ? 64 : 32} value={height} onChange={e => setHeight(parseInt(e.target.value) || (videoModel === 'ltx-2.3' ? 1024 : 768))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
+              <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">Width{videoModel === 'ccioi-speed' ? '（64 倍数）' : ''}</label><input type="number" min={64} step={videoModel === 'ccioi-speed' ? 64 : 32} value={width} onChange={e => setWidth(parseInt(e.target.value) || (videoModel === 'ccioi-speed' ? 1536 : 512))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
+              <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">Height{videoModel === 'ccioi-speed' ? '（64 倍数）' : ''}</label><input type="number" min={64} step={videoModel === 'ccioi-speed' ? 64 : 32} value={height} onChange={e => setHeight(parseInt(e.target.value) || (videoModel === 'ccioi-speed' ? 1024 : 768))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
               <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">Seed</label><input type="number" value={seed} onChange={e => setSeed(parseInt(e.target.value) || 0)} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>
-              {videoModel === 'opensora' && <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.steps')}</label><input type="number" value={numSteps} onChange={e => setNumSteps(parseInt(e.target.value))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>}
-              {videoModel === 'opensora' && <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.aspect_ratio')}</label><input type="text" value={aspectRatio} onChange={e => setAspectRatio(e.target.value)} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>}
-              {videoModel === 'opensora' && <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.nproc_per_node')}</label><input type="number" min={1} value={nprocPerNode} onChange={e => setNprocPerNode(Math.max(1, parseInt(e.target.value) || 1))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>}
+              {videoModel === 'ccioi-standard' && <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.steps')}</label><input type="number" value={numSteps} onChange={e => setNumSteps(parseInt(e.target.value))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>}
+              {videoModel === 'ccioi-standard' && <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.aspect_ratio')}</label><input type="text" value={aspectRatio} onChange={e => setAspectRatio(e.target.value)} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>}
+              {videoModel === 'ccioi-standard' && <div><label className="text-[8px] font-bold text-app-subtext uppercase block mb-0.5">{t('tool.video.nproc_per_node')}</label><input type="number" min={1} value={nprocPerNode} onChange={e => setNprocPerNode(Math.max(1, parseInt(e.target.value) || 1))} className="w-full bg-app-base p-1 rounded text-[10px]" /></div>}
             </div>
             <button onClick={handleDispatch} disabled={isGenerating || isUploading} className={`w-full py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition-all uppercase tracking-widest text-[10px] ${!user ? 'bg-app-surface text-app-subtext border border-app-border cursor-not-allowed' : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 text-white shadow-cyan-900/30'}`}>
               {isGenerating || isConnecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : !user ? <Lock className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current" />}

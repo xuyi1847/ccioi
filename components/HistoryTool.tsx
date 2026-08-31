@@ -39,7 +39,7 @@ const HistoryTool: React.FC = () => {
   const [modelFilter, setModelFilter] = useState('all');
   const isAdmin = user?.role === 'super_admin';
 
-  const modelName = (item: HistoryRecord) => String((item.params as any)?.model || 'AI Video');
+  const modelName = (item: HistoryRecord) => ({ 'ccioi-cinema': 'CCIOI Cinema', 'ccioi-speed': 'CCIOI Speed', 'ccioi-standard': 'CCIOI Standard' } as Record<string, string>)[String((item.params as any)?.model || '')] || 'CCIOI Video';
   const availableModels = Array.from(new Set(history.map(modelName))).sort();
   const visibleHistory = history.filter((item) => {
     const matchesQuery = !query.trim() || item.prompt.toLowerCase().includes(query.trim().toLowerCase());

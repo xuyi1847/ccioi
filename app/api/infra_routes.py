@@ -118,6 +118,36 @@ JWT_SECRET = os.getenv("JWT_SECRET", "ccioi-dev-secret")
 JWT_ALGO = "HS256"
 JWT_EXPIRE_SECONDS = 60 * 60 * 24 * 7  # 7 天
 PUBLIC_ORIGIN = os.getenv("PUBLIC_ORIGIN", "https://www.ccioi.com").rstrip("/")
+PUBLIC_MODEL_MAP = {"ccioi-cinema": "wan-2.2", "ccioi-speed": "ltx-2.3", "ccioi-standard": "opensora"}
+INTERNAL_MODEL_MAP = {value: key for key, value in PUBLIC_MODEL_MAP.items()}
+
+def _internal_model(value: str) -> str:
+    return PUBLIC_MODEL_MAP.get(str(value).lower(), str(value).lower())
+
+def _public_model(value: str) -> str:
+    return INTERNAL_MODEL_MAP.get(str(value).lower(), "ccioi-standard")
+
+def _public_gpu_id(gpu_id: Optional[str]) -> Optional[str]:
+    return "node-" + hashlib.sha256(gpu_id.encode("utf-8")).hexdigest()[:8] if gpu_id else None
+
+def _public_payload(value: Any) -> Any:
+    """Remove private engine identities from values returned to browsers and API clients."""
+    if isinstance(value, dict):
+        return {key: _public_payload(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_public_payload(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_public_payload(item) for item in value)
+    if isinstance(value, str):
+        replacements = (
+            (r"wan(?:-|\s)?2\.2(?:-(?:t2v|i2v))?", "ccioi-cinema"),
+            (r"ltx(?:-|\s)?2\.3", "ccioi-speed"),
+            (r"open(?:-|\s)?sora", "ccioi-standard"),
+        )
+        for pattern, replacement in replacements:
+            value = re.sub(pattern, replacement, value, flags=re.IGNORECASE)
+        return value
+    return value
 
 def create_jwt(user: dict) -> str:
     payload = {
@@ -338,7 +368,7 @@ async def write_user_config(req: UserConfigReq, auth: dict = Depends(get_user_fr
 @router.get("/drama/projects")
 async def drama_projects(auth: dict = Depends(get_user_from_auth)):
     reconcile_drama_projects(auth["sub"])
-    return list_drama_projects(auth["sub"])
+    return _public_payload(list_drama_projects(auth["sub"]))
 
 
 @router.put("/drama/projects")
@@ -348,7 +378,7 @@ async def upsert_drama_project(req: DramaProjectReq, auth: dict = Depends(get_us
         raise HTTPException(status_code=400, detail="Project name is required")
     project_id = req.id or str(uuid.uuid4())
     try:
-        return save_drama_project(project_id, auth["sub"], name, req.data)
+        return _public_payload(save_drama_project(project_id, auth["sub"], name, req.data))
     except ValueError:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -923,7 +953,7 @@ async def get_history(user: dict = Depends(get_user_from_auth)):
         raise HTTPException(status_code=401, detail="Invalid token payload: missing sub")
 
     try:
-        return list_generation_records(user_id)
+        return _public_payload(list_generation_records(user_id))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -931,18 +961,18 @@ async def get_history(user: dict = Depends(get_user_from_auth)):
 @router.get("/admin/history")
 async def admin_history(admin: dict = Depends(require_super_admin)):
     users = {item["id"]: item for item in list_users()}
-    return [
+    return _public_payload([
         {**item, "user_email": users.get(item.get("user_id"), {}).get("email"),
          "user_name": users.get(item.get("user_id"), {}).get("name")}
         for item in list_generation_records()
-    ]
+    ])
 
 
 @router.get("/showcase")
 async def homepage_showcase():
     selected_ids = get_system_setting("homepage_showcase", []) or []
     records = {str(item.get("id")): item for item in list_generation_records() if item.get("id")}
-    return [records[task_id] for task_id in selected_ids if task_id in records]
+    return _public_payload([records[task_id] for task_id in selected_ids if task_id in records])
 
 
 @router.put("/admin/showcase/{task_id}")
@@ -1116,6 +1146,7 @@ def select_idle_gpu(
     model: str = "opensora",
 ) -> Tuple[Optional[str], Optional[dict]]:
     if preferred_gpu_id:
+        preferred_gpu_id = next((real_id for real_id in gpu_registry if _public_gpu_id(real_id) == preferred_gpu_id), preferred_gpu_id)
         info = gpu_registry.get(preferred_gpu_id)
         if (
             info
@@ -1136,7 +1167,7 @@ def select_idle_gpu(
 
 
 class ExternalVideoGenerationReq(BaseModel):
-    model: str = "wan-2.2"
+    model: str = "ccioi-cinema"
     generation_type: str = "text_to_video"
     prompt: str
     image_url: Optional[str] = None
@@ -1162,9 +1193,9 @@ def _public_api_task(task: dict) -> dict:
         return value.isoformat() if value else None
     return {
         "task_id": str(task["id"]), "status": task["status"],
-        "progress": task.get("progress", 0), "model": task["model"],
-        "gpu_id": task.get("gpu_id"), "video_url": task.get("video_url"),
-        "thumbnail_url": task.get("thumbnail_url"), "error": task.get("error"),
+        "progress": task.get("progress", 0), "model": _public_model(task["model"]),
+        "node_id": _public_gpu_id(task.get("gpu_id")), "video_url": task.get("video_url"),
+        "thumbnail_url": task.get("thumbnail_url"), "error": _public_payload(task.get("error")),
         "created_at": iso(task.get("created_at")), "started_at": iso(task.get("started_at")),
         "completed_at": iso(task.get("completed_at")),
     }
@@ -1229,9 +1260,10 @@ async def dispatch_queued_api_tasks() -> None:
 
 @router.post("/v1/videos/generations", status_code=202, tags=["External Video API"])
 async def create_external_video_generation(req: ExternalVideoGenerationReq, user: dict = Depends(_external_api_user)):
-    model = req.model.lower().strip()
-    if model not in {"wan-2.2", "ltx-2.3", "opensora"}:
-        raise HTTPException(status_code=422, detail="model must be wan-2.2, ltx-2.3, or opensora")
+    public_model = req.model.lower().strip()
+    if public_model not in PUBLIC_MODEL_MAP:
+        raise HTTPException(status_code=422, detail="model must be ccioi-cinema, ccioi-speed, or ccioi-standard")
+    model = _internal_model(public_model)
     if not req.prompt.strip():
         raise HTTPException(status_code=422, detail="prompt is required")
     if req.generation_type not in {"text_to_video", "image_to_video"}:
@@ -1249,9 +1281,9 @@ async def create_external_video_generation(req: ExternalVideoGenerationReq, user
     if req.width < 64 or req.height < 64 or req.num_frames < 1 or req.fps < 1:
         raise HTTPException(status_code=422, detail="invalid video dimensions, frames, or fps")
     if model == "ltx-2.3" and (req.num_frames > 481 or req.width % 64 or req.height % 64):
-        raise HTTPException(status_code=422, detail="LTX requires <=481 frames and dimensions divisible by 64")
+        raise HTTPException(status_code=422, detail="CCIOI Speed requires <=481 frames and dimensions divisible by 64")
     if model == "wan-2.2" and (req.num_frames - 1) % 4:
-        raise HTTPException(status_code=422, detail="Wan 2.2 num_frames must follow 4n+1")
+        raise HTTPException(status_code=422, detail="CCIOI Cinema num_frames must follow 4n+1")
     task_id = str(uuid.uuid4())
     payload = req.model_dump(exclude={"callback_url"})
     payload["model"] = model
@@ -1303,13 +1335,13 @@ async def list_gpus(auth: dict = Depends(get_user_from_auth)):
     return {
         "gpus": [
             {
-                "id": gpu_id,
-                "name": info.get("name") or gpu_id,
+                "id": _public_gpu_id(gpu_id),
+                "name": "CCIOI Compute Node",
                 "status": info["status"] if _gpu_is_online(info) else "offline",
                 "current_task": info.get("current_task"),
                 "last_seen_seconds": max(0, round(now - info.get("last_heartbeat", now), 1)),
-                "supported_models": _gpu_supported_models(info),
-                "metadata": info.get("metadata") or {},
+                "supported_models": [_public_model(model) for model in _gpu_supported_models(info)],
+                "metadata": {},
             }
             for gpu_id, info in sorted(gpu_registry.items())
         ]
@@ -1373,7 +1405,7 @@ async def gpu_ws(ws: WebSocket):
                         update_video_api_task(task_id, "processing", progress=min(99, int(match.group(1))))
                 frontend_ws = task_frontend_map.get(task_id)
                 if frontend_ws:
-                    await frontend_ws.send_text(json.dumps(msg))
+                    await frontend_ws.send_text(json.dumps(_public_payload(msg)))
                 else:
                     print(f"⚠️ No frontend ws for TASK_LOG, task_id={task_id}")
                 continue
@@ -1418,7 +1450,7 @@ async def gpu_ws(ws: WebSocket):
 
                 # 透传给前端
                 if frontend_ws:
-                    await frontend_ws.send_text(json.dumps(msg))
+                    await frontend_ws.send_text(json.dumps(_public_payload(msg)))
                 else:
                     print(f"⚠️ No frontend websocket found for task {task_id}")
                 continue
@@ -1520,11 +1552,11 @@ async def frontend_ws(ws: WebSocket):
             # 调度 GPU：前端可指定 preferred_gpu_id，为空时保持自动调度。
             preferred_gpu_id = data.get("preferred_gpu_id")
             parameters = data.get("parameters") or {}
-            model = str(data.get("model") or parameters.get("model") or "opensora").lower()
+            model = _internal_model(str(data.get("model") or parameters.get("model") or "ccioi-standard").lower())
             if model not in {"opensora", "ltx-2.3"}:
                 await ws.send_text(json.dumps({
                     "type": "TASK_REJECTED",
-                    "message": f"Unsupported video model: {model}",
+                    "message": f"Unsupported video model: {_public_model(model)}",
                 }))
                 continue
             if model == "ltx-2.3":
@@ -1532,16 +1564,16 @@ async def frontend_ws(ws: WebSocket):
                 ltx_height = int(parameters.get("height") or 1024)
                 ltx_frames = int(parameters.get("num_frames") or parameters.get("frames") or 481)
                 if ltx_frames < 1 or ltx_frames > 481:
-                    await ws.send_text(json.dumps({"type": "TASK_REJECTED", "message": "LTX num_frames must be between 1 and 481"}))
+                    await ws.send_text(json.dumps({"type": "TASK_REJECTED", "message": "CCIOI Speed num_frames must be between 1 and 481"}))
                     continue
                 if ltx_width < 64 or ltx_height < 64 or ltx_width % 64 or ltx_height % 64:
-                    await ws.send_text(json.dumps({"type": "TASK_REJECTED", "message": "LTX width and height must be multiples of 64"}))
+                    await ws.send_text(json.dumps({"type": "TASK_REJECTED", "message": "CCIOI Speed width and height must be multiples of 64"}))
                     continue
             gpu_id, gpu = select_idle_gpu(preferred_gpu_id, model)
             if not gpu:
                 message = (
-                    f"GPU {preferred_gpu_id} is busy, offline, or does not support {model}"
-                    if preferred_gpu_id else f"No idle GPU supports {model}"
+                    f"Node {preferred_gpu_id} is busy, offline, or does not support {_public_model(model)}"
+                    if preferred_gpu_id else f"No idle node supports {_public_model(model)}"
                 )
                 await ws.send_text(json.dumps({
                     "type": "TASK_REJECTED",
@@ -1606,7 +1638,7 @@ async def frontend_ws(ws: WebSocket):
                 if image_url.startswith("/"):
                     image_url = f"{PUBLIC_ORIGIN}{image_url}"
                 if not image_url.startswith("https://"):
-                    await ws.send_text(json.dumps({"type": "TASK_REJECTED", "message": "LTX image_url must use https"}))
+                    await ws.send_text(json.dumps({"type": "TASK_REJECTED", "message": "CCIOI Speed image_url must use https"}))
                     gpu["status"] = "idle"
                     gpu["current_task"] = None
                     task_frontend_map.pop(task_id, None)
@@ -1629,7 +1661,7 @@ async def frontend_ws(ws: WebSocket):
             })
 
             # Ack 前端
-            await ws.send_text(json.dumps({"type": "TASK_ACCEPTED", "task_id": task_id, "gpu_id": gpu_id}))
+            await ws.send_text(json.dumps({"type": "TASK_ACCEPTED", "task_id": task_id, "gpu_id": _public_gpu_id(gpu_id)}))
 
     except WebSocketDisconnect:
         print("❌ Frontend disconnected")
@@ -1850,13 +1882,13 @@ async def agent_ws(ws: WebSocket):
                     await frontend_ws_global.send_text(json.dumps({
                         "type": "TASK_LOG",
                         "stream": "stdout",
-                        "line": line
+                        "line": _public_payload(line)
                     }))
                 continue
 
             if data.get("type") == "TASK_LOG":
                 if frontend_ws_global:
-                    await frontend_ws_global.send_text(json.dumps(data))
+                    await frontend_ws_global.send_text(json.dumps(_public_payload(data)))
                 continue
 
             if data.get("type") == "OTP_REQUIRED":
