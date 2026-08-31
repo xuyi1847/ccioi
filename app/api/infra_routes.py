@@ -1306,7 +1306,7 @@ async def admin_video_api_keys(admin: dict = Depends(require_super_admin)):
 
 @router.post("/admin/video-api/keys", status_code=201)
 async def admin_create_video_api_key(req: ApiKeyCreateReq, admin: dict = Depends(require_super_admin)):
-    owner_id = req.user_id or admin["sub"]
+    owner_id = req.user_id or admin["id"]
     if not get_user_by_id(owner_id):
         raise HTTPException(status_code=404, detail="User not found")
     name = req.name.strip()
