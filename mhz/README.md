@@ -89,3 +89,36 @@ make build
 ## 当前边界
 
 v0.1 推荐是可解释的规则模型，不包含协同过滤或神经网络。Analytics 是第一版实时聚合口径；有足够行为数据后再增加严格的“首次曝光”物化指标、Item CF 和离线评估。
+
+## macOS Music.app PoC
+
+这个实验只新增独立的 `PlaybackProvider`，不会替换正式版的 MusicKit、PostgreSQL 或推荐架构。Music.app 是播放状态的唯一事实来源，所有 AppleScript 调用统一封装在 `run_applescript`。
+
+```bash
+cd backend
+.venv/bin/python spike_music.py --library-limit 10
+
+# 会改变当前播放状态：验证暂停、恢复、下一首及精确播放资料库歌曲
+.venv/bin/python spike_music.py --library-limit 10 --control --test-next \
+  --play-library "Safekeeping" --artist "A-Sun" --wait 3
+```
+
+当前实测矩阵：
+
+- 读取当前歌曲与播放状态：已确认
+- 暂停、恢复和下一首：已确认
+- 枚举 Music Library：已确认
+- 按 persistent ID 播放 Library 中的指定歌曲：已确认
+- 播放 Library 外的指定 Apple Music Catalog 歌曲：当前不可用；实测 HTTPS `open location` 与 `music://` 深链均未切换到目标歌曲
+
+Catalog 实验必须显式声明目标歌曲，只有播放对象确实匹配歌名和歌手、且不在 Library 中时才算通过：
+
+```bash
+.venv/bin/python spike_music.py \
+  --catalog-url "https://music.apple.com/cn/song/no-surprises/1097861388" \
+  --expected-title "No Surprises" \
+  --expected-artist "Radiohead" \
+  --wait 8
+```
+
+Music.app 的 `open location` 不等同于受支持的 Catalog 搜索 API。当前 PoC 候选池因此限定为用户 Music Library 中的歌曲；未来接入 MusicKit 时再恢复完整 Catalog 候选能力。
