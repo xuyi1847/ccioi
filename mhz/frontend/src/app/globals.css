@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root{--paper:#f0eee8;--ink:#20231f;--muted:#777b72;--red:#d94a36;--line:rgba(32,35,31,.16)}
+*{box-sizing:border-box}html,body{min-height:100%;margin:0}body{color:var(--ink);background:radial-gradient(circle at 50% 10%,#faf9f5 0,var(--paper) 52%,#dedbd1 100%);font-family:Arial,"PingFang SC",sans-serif}
+button{font:inherit}.noise{position:fixed;inset:0;pointer-events:none;opacity:.035;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+.display{font-family:"Courier New",monospace;letter-spacing:-.06em}.caps{font-size:10px;letter-spacing:.22em;text-transform:uppercase}.soft-shadow{box-shadow:0 30px 70px rgba(45,42,34,.16),0 3px 10px rgba(45,42,34,.1)}
+.dial-line{background:linear-gradient(90deg,transparent,var(--ink) 10%,var(--ink) 90%,transparent);height:1px}.pulse{animation:pulse 1.7s ease-in-out infinite}@keyframes pulse{50%{opacity:.35}}

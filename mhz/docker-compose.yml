@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: mhz
+      POSTGRES_USER: mhz
+      POSTGRES_PASSWORD: mhz
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mhz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  backend:
+    build: ./backend
+    environment:
+      MUSIC_PROVIDER: ${MUSIC_PROVIDER:-mock}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://mhz:mhz@postgres:5432/mhz}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      JWT_SECRET: ${JWT_SECRET:-local-development-only}
+      APPLE_TEAM_ID: ${APPLE_TEAM_ID:-}
+      APPLE_KEY_ID: ${APPLE_KEY_ID:-}
+      APPLE_PRIVATE_KEY_PATH: ${APPLE_PRIVATE_KEY_PATH:-}
+      APPLE_MUSIC_STOREFRONT: ${APPLE_MUSIC_STOREFRONT:-cn}
+      APPLE_MUSIC_ORIGIN: ${APPLE_MUSIC_ORIGIN:-http://localhost:3000}
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+  frontend:
+    build: ./frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+    ports: ["3000:3000"]
+    depends_on: [backend]
+volumes:
+  postgres_data:
