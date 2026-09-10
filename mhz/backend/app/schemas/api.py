@@ -52,6 +52,8 @@ class TrackOut(BaseModel):
     album: str | None
     artwork_url: str | None = Field(None, alias="artworkUrl")
     duration_ms: int | None = Field(None, alias="durationMs")
+    stream_url: str | None = Field(None, alias="streamUrl")
+    license_url: str | None = Field(None, alias="licenseUrl")
     provider: ProviderOut
     model_config = {"populate_by_name": True}
 

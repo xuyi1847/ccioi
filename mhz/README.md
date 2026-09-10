@@ -2,7 +2,24 @@
 
 > 不是播放你喜欢的歌，而是找到你的下一首喜欢。
 
-MHz 是一个极简私人音乐电台。v0.1 只验证两件事：MusicKit 网页授权与连续播放，以及行为驱动的私人推荐闭环。它不是歌单或搜索型音乐 App。
+MHz 是一个极简私人音乐电台。当前 PoC 使用 Jamendo 的真实独立音乐和浏览器 HTML5 Audio，验证连续播放与行为驱动的私人推荐闭环。它不是歌单或搜索型音乐 App。
+
+## Jamendo 真实播放 PoC
+
+Jamendo 曾公开的测试 client ID `709fa152` 已被官方停用（API 返回 suspended application），不能继续使用。请在 Jamendo Developer Portal 免费创建应用，然后配置：
+
+```env
+MUSIC_PROVIDER=jamendo
+JAMENDO_CLIENT_ID=你的_client_id
+```
+
+随后运行：
+
+```bash
+docker compose up --build
+```
+
+打开 <http://localhost:3000>，点击 `START LISTENING`。后端会从 `/v3.0/tracks` 导入真实候选歌曲，前端直接播放响应中的 `audio` URL，不下载、不代理、不做离线缓存。
 
 ## 结构
 

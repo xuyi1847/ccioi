@@ -7,7 +7,7 @@ export function Player({item,playing,progress,onToggle,onFavorite,onSkip,onDisli
     <div className="soft-shadow relative aspect-square w-[min(62vw,330px)] overflow-hidden bg-[#d2d0c8]">
       {track.artworkUrl?<Image src={track.artworkUrl} alt={`${track.title} artwork`} fill sizes="330px" priority className="object-cover grayscale-[20%]"/>:<div className="grid h-full place-items-center text-5xl">MHz</div>}
     </div>
-    <div className="mt-8 min-h-16 text-center"><h2 className="text-xl font-medium tracking-tight">{track.title}</h2><p className="mt-1 text-sm text-[var(--muted)]">{track.artist}</p></div>
+    <div className="mt-8 min-h-16 text-center"><h2 className="text-xl font-medium tracking-tight">{track.title}</h2><p className="mt-1 text-sm text-[var(--muted)]">{track.artist}</p>{track.licenseUrl&&<a href={track.licenseUrl} target="_blank" rel="noreferrer" className="mt-2 block text-[10px] uppercase tracking-widest text-[var(--muted)] underline">Track license</a>}</div>
     <div className="mt-5 h-px w-[min(62vw,330px)] bg-black/10"><div className="h-full bg-[var(--red)] transition-[width] duration-1000" style={{width:`${progress}%`}}/></div>
     <div className="mt-7 flex items-center gap-7">
       <button aria-label="Favorite" onClick={onFavorite} className="text-xl opacity-55 transition hover:scale-110 hover:opacity-100">♡</button>
