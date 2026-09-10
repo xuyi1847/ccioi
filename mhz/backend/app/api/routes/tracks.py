@@ -44,3 +44,21 @@ async def discover_tracks(
         return {"count": len(tracks), "trackIds": [str(track.id) for track in tracks]}
     except Exception as exc:
         raise HTTPException(502, f"Audius catalog unavailable: {exc}") from exc
+
+
+@router.post("/discover/chinese")
+async def discover_chinese_tracks(
+    limit: int = Query(100, ge=10, le=200),
+    repo: MusicRepository = Depends(get_repository),
+    settings: Settings = Depends(settings_dependency),
+) -> dict:
+    if settings.music_provider != "audius":
+        return {"count": 0, "trackIds": []}
+    try:
+        provider = AudiusProvider(settings)
+        items = await provider.get_chinese_tracks(limit)
+        await repo.clear_provider_language(provider.name, "zh")
+        tracks = await repo.import_provider_tracks(items, provider.name, "global")
+        return {"count": len(tracks), "trackIds": [str(track.id) for track in tracks]}
+    except Exception as exc:
+        raise HTTPException(502, f"Audius Chinese catalog unavailable: {exc}") from exc

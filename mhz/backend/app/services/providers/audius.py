@@ -1,4 +1,6 @@
 from typing import Any
+import asyncio
+import re
 
 import httpx
 
@@ -54,6 +56,15 @@ class AudiusProvider(MusicProvider):
         duration = int(item.get("duration") or 0)
         return item.get("is_streamable", True) and 30 <= duration <= 900
 
+    @staticmethod
+    def _is_chinese_song(item: dict[str, Any]) -> bool:
+        if (item.get("genre") or "").casefold() in {"podcasts", "spoken word"}:
+            return False
+        text = str(item.get("title") or "")
+        user = item.get("user") or {}
+        text += " " + str(user.get("name") or "")
+        return bool(re.search(r"[\u3400-\u9fff]", text))
+
     async def search_tracks(self, query: str, limit: int = 20) -> list[ProviderTrack]:
         data = await self._get("/tracks/search", query=query, limit=limit)
         return [self._map(item) for item in data if self._playable_song(item)]
@@ -61,6 +72,29 @@ class AudiusProvider(MusicProvider):
     async def get_trending_tracks(self, limit: int = 100) -> list[ProviderTrack]:
         data = await self._get("/tracks/trending", limit=limit)
         return [self._map(item) for item in data if self._playable_song(item)]
+
+    async def get_chinese_tracks(self, limit: int = 100) -> list[ProviderTrack]:
+        queries = ("中文", "华语", "Mandarin", "粤语")
+        pages = await asyncio.gather(*(self._get("/tracks/search", query=query, limit=50) for query in queries))
+        result: list[ProviderTrack] = []
+        seen: set[str] = set()
+        artist_counts: dict[str, int] = {}
+        for page in pages:
+            for item in page:
+                track_id = str(item.get("id") or "")
+                if not track_id or track_id in seen or not self._playable_song(item) or not self._is_chinese_song(item):
+                    continue
+                artist_id = str(item.get("user_id") or (item.get("user") or {}).get("id") or "unknown")
+                if artist_counts.get(artist_id, 0) >= 3:
+                    continue
+                mapped = self._map(item)
+                mapped.metadata["language"] = "zh"
+                result.append(mapped)
+                seen.add(track_id)
+                artist_counts[artist_id] = artist_counts.get(artist_id, 0) + 1
+                if len(result) >= limit:
+                    return result
+        return result
 
     async def get_tracks_by_artist(self, artist_id: str, limit: int = 50) -> list[ProviderTrack]:
         data = await self._get(f"/users/{artist_id}/tracks", limit=limit)

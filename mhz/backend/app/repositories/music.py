@@ -34,10 +34,12 @@ class MusicRepository:
         await self.session.refresh(event)
         return event
 
-    async def candidate_tracks(self, excluded: set[uuid.UUID], provider: str | None = None) -> list[Track]:
+    async def candidate_tracks(self, excluded: set[uuid.UUID], provider: str | None = None, language: str | None = None) -> list[Track]:
         statement: Select[tuple[Track]] = select(Track).options(selectinload(Track.providers))
         if provider:
             statement = statement.join(TrackProvider).where(TrackProvider.provider == provider)
+        if language:
+            statement = statement.where(Track.metadata_json["language"].as_string() == language)
         if excluded:
             statement = statement.where(Track.id.not_in(excluded))
         rows = await self.session.scalars(statement.limit(250))
@@ -53,15 +55,32 @@ class MusicRepository:
                 )
             )
             if existing:
+                if item.metadata.get("language"):
+                    existing.metadata_json = {**existing.metadata_json, "language": item.metadata["language"]}
+                mapping = next((entry for entry in existing.providers if entry.provider == provider), None)
+                if mapping:
+                    mapping.provider_metadata = item.metadata
                 imported.append(existing)
                 continue
             track = Track(title=item.title, artist_name=item.artist, album_name=item.album, isrc=item.isrc,
-                          duration_ms=item.duration_ms, genre=item.genres, metadata_json={"artworkUrl": item.artwork_url}, popularity=.5)
+                          duration_ms=item.duration_ms, genre=item.genres,
+                          metadata_json={"artworkUrl": item.artwork_url, "language": item.metadata.get("language")}, popularity=.5)
             track.providers.append(TrackProvider(provider=provider, provider_track_id=item.provider_id, storefront=storefront, provider_metadata=item.metadata))
             self.session.add(track)
             imported.append(track)
         await self.session.commit()
         return imported
+
+    async def clear_provider_language(self, provider: str, language: str) -> None:
+        tracks = await self.session.scalars(
+            select(Track).join(TrackProvider).where(
+                TrackProvider.provider == provider,
+                Track.metadata_json["language"].as_string() == language,
+            )
+        )
+        for track in tracks:
+            track.metadata_json = {**track.metadata_json, "language": None}
+        await self.session.commit()
 
     async def recent_events(self, user_id: uuid.UUID, limit: int = 300) -> list[tuple[UserTrackEvent, Track]]:
         rows = await self.session.execute(

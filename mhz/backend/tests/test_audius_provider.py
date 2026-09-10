@@ -27,3 +27,9 @@ def test_audius_excludes_hour_long_mixes_from_radio_candidates() -> None:
     assert AudiusProvider._playable_song({"duration": 239, "is_streamable": True})
     assert not AudiusProvider._playable_song({"duration": 3673, "is_streamable": True})
     assert not AudiusProvider._playable_song({"duration": 239, "is_streamable": False})
+
+
+def test_audius_chinese_filter_excludes_podcasts() -> None:
+    assert AudiusProvider._is_chinese_song({"title": "夜航", "genre": "Electronic", "user": {}})
+    assert not AudiusProvider._is_chinese_song({"title": "中文播客", "genre": "Podcasts", "user": {}})
+    assert not AudiusProvider._is_chinese_song({"title": "Night Flight", "genre": "Electronic", "user": {}})

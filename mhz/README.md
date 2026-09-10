@@ -22,6 +22,8 @@ docker compose up --build
 
 打开 <http://localhost:3000>，点击 `START LISTENING`。后端从 Audius Trending 导入真实候选歌曲，前端通过官方 `/v1/tracks/{id}/stream` 地址播放，不下载、不代理、不做离线缓存。
 
+新增 `90.8 华语兆赫`：切入频道时会搜索中文、华语、Mandarin、粤语等关键词，仅保留含中文信息的 30 秒至 15 分钟音乐，并排除 Podcast。Audius 的华语资源明显少于欧美独立音乐，因此该频道是小型实验曲库，不等同于主流华语版权库。
+
 ## 结构
 
 - `frontend/`：Next.js、TypeScript、TailwindCSS、Zustand、HTML5 Audio
@@ -100,6 +102,7 @@ make build
 - `GET /api/v1/channels`
 - `GET /api/v1/tracks/search?q=Radiohead`
 - `POST /api/v1/tracks/discover?limit=100`
+- `POST /api/v1/tracks/discover/chinese?limit=100`
 - `POST /api/v1/recommendations/next`
 - `POST /api/v1/events`
 - `GET /api/v1/apple/developer-token`

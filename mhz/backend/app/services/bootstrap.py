@@ -6,6 +6,7 @@ from app.services.providers.mock import MOCK_TRACKS
 
 CHANNELS = [
     ("private", 87.5, "私人兆赫", "personal", {"familiarRatio": .15, "discoveryRatio": .65, "exploreRatio": .20}),
+    ("chinese", 90.8, "华语兆赫", "chinese", {"familiarRatio": .35, "discoveryRatio": .50, "exploreRatio": .15}),
     ("discovery", 94.2, "发现兆赫", "discovery", {"familiarRatio": .05, "discoveryRatio": .80, "exploreRatio": .15}),
     ("familiar", 101.7, "熟悉兆赫", "familiar", {"familiarRatio": .60, "discoveryRatio": .30, "exploreRatio": .10}),
     ("roam", 106.9, "漫游兆赫", "explore", {"familiarRatio": .05, "discoveryRatio": .35, "exploreRatio": .60}),
@@ -13,8 +14,8 @@ CHANNELS = [
 
 
 async def seed_data(session: AsyncSession, include_mock_tracks: bool = True) -> None:
-    if not await session.scalar(select(func.count(Channel.id))):
-        session.add_all([Channel(id=item[0], frequency=item[1], name=item[2], channel_type=item[3], config=item[4]) for item in CHANNELS])
+    existing_channels = set(await session.scalars(select(Channel.id)))
+    session.add_all([Channel(id=item[0], frequency=item[1], name=item[2], channel_type=item[3], config=item[4]) for item in CHANNELS if item[0] not in existing_channels])
     if include_mock_tracks and not await session.scalar(select(func.count(Track.id))):
         for index, item in enumerate(MOCK_TRACKS):
             track = Track(

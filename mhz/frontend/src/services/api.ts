@@ -15,5 +15,6 @@ export const api={
   event:(body:Record<string,unknown>)=>request("/events",{method:"POST",body:JSON.stringify(body)}),
   appleToken:()=>request<{developerToken:string;storefront:string}>("/apple/developer-token"),
   search:(query:string)=>request<{count:number;trackIds:string[]}>(`/tracks/search?q=${encodeURIComponent(query)}`),
-  discover:(limit=100)=>request<{count:number;trackIds:string[]}>(`/tracks/discover?limit=${limit}`,{method:"POST"})
+  discover:(limit=100)=>request<{count:number;trackIds:string[]}>(`/tracks/discover?limit=${limit}`,{method:"POST"}),
+  discoverChinese:(limit=100)=>request<{count:number;trackIds:string[]}>(`/tracks/discover/chinese?limit=${limit}`,{method:"POST"})
 };
