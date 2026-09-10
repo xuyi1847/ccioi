@@ -54,7 +54,6 @@ class TrackOut(BaseModel):
     duration_ms: int | None = Field(None, alias="durationMs")
     stream_url: str | None = Field(None, alias="streamUrl")
     license_url: str | None = Field(None, alias="licenseUrl")
-    provider_url: str | None = Field(None, alias="providerUrl")
     provider: ProviderOut
     model_config = {"populate_by_name": True}
 
