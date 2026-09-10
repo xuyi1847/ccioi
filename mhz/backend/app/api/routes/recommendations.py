@@ -30,6 +30,7 @@ async def next_recommendation(payload: RecommendationIn, repo: MusicRepository =
                        artworkUrl=track.metadata_json.get("artworkUrl"), durationMs=track.duration_ms,
                        streamUrl=provider.provider_metadata.get("streamUrl"),
                        licenseUrl=provider.provider_metadata.get("licenseUrl"),
+                       providerUrl=provider.provider_metadata.get("providerUrl"),
                        provider=ProviderOut(name=provider.provider, trackId=provider.provider_track_id)),
         reason=ReasonOut(type=selected.reason if selected else "fallback", confidence=max(0.1, min(0.99, selected.score if selected else 0.2))),
     )

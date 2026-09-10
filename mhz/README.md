@@ -20,7 +20,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-打开 <http://localhost:3000>，点击 `START LISTENING`。后端从 Audius Trending 导入真实候选歌曲，前端通过官方 `/v1/tracks/{id}/stream` 地址播放，不下载、不代理、不做离线缓存。
+打开 <http://localhost:3000>，点击 `START LISTENING`。后端从 Audius Trending 导入真实候选歌曲；MHz 本地只展示推荐列表，点击歌曲会跳转 Audius 官方页面收听，不下载、不代理、不在本地播放音频。
 
 新增 `90.8 华语兆赫`：切入频道时会搜索中文、华语、Mandarin、粤语等关键词，仅保留含中文信息的 30 秒至 15 分钟音乐，并排除 Podcast。Audius 的华语资源明显少于欧美独立音乐，因此该频道是小型实验曲库，不等同于主流华语版权库。
 
@@ -66,6 +66,14 @@ npm install
 npm run dev
 ```
 
+本机 Apple Music 遥控页面（仅 macOS，声音由 Music.app 播放）：
+
+```bash
+./start-mac-bridge.sh
+```
+
+然后访问 <http://localhost:3000/local>。本地桥接服务只暴露资料库列表、播放、暂停和状态读取，不接触 Apple ID、订阅或家庭共享设置。
+
 ## Apple Music 配置
 
 1. 在 Apple Developer 创建 Media/MusicKit Identifier 和 MusicKit 私钥。
@@ -101,6 +109,7 @@ make build
 - `POST /api/v1/users/anonymous`
 - `GET /api/v1/channels`
 - `GET /api/v1/tracks/search?q=Radiohead`
+- `GET /api/v1/tracks?channelId=private&limit=50`
 - `POST /api/v1/tracks/discover?limit=100`
 - `POST /api/v1/tracks/discover/chinese?limit=100`
 - `POST /api/v1/recommendations/next`

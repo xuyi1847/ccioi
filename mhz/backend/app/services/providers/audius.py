@@ -48,6 +48,7 @@ class AudiusProvider(MusicProvider):
                 "mood": item.get("mood"),
                 "playCount": item.get("play_count") or 0,
                 "permalink": item.get("permalink"),
+                "providerUrl": f"https://audius.co{item['permalink']}" if item.get("permalink") else "https://audius.co",
             },
         )
 
