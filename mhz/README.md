@@ -2,7 +2,18 @@
 
 > 不是播放你喜欢的歌，而是找到你的下一首喜欢。
 
-MHz 是一个极简私人音乐电台。当前 PoC 使用 Audius 的真实独立音乐和浏览器 HTML5 Audio，验证连续播放与行为驱动的私人推荐闭环。它不是歌单或搜索型音乐 App。
+MHz 是一个极简音乐发现电台。当前 PoC 使用 MusicBrainz 的开放元数据发现歌曲；匹配到 Audius 音源时可站内播放，否则提供 Apple Music、QQ 音乐和网易云音乐的搜索入口。
+
+## MusicBrainz 发现模式
+
+默认配置无需开发者密钥：
+
+```env
+MUSIC_PROVIDER=musicbrainz
+MUSICBRAINZ_USER_AGENT=MHz/0.1 (https://www.ccioi.com)
+```
+
+启动后点击 `START LISTENING`，系统导入一批 MusicBrainz 录音元数据并生成推荐。MusicBrainz 不提供音频，所以歌曲卡片会显示外部平台入口；本站不抓取或代理商业音乐文件。封面通过 Cover Art Archive 按需加载。
 
 ## Audius 真实播放 PoC
 
@@ -41,7 +52,7 @@ docker compose up --build
 
 打开 <http://localhost:3000>，点击 `START LISTENING`，可测试切台、播放/暂停、Favorite、Skip、Dislike、预取和自动下一首。
 
-Mock 模式使用安全的 Compose 默认值，无需先创建 `.env`。要改配置时再执行 `cp .env.example .env`。
+要使用原来的 Audius 完整播放模式，将 `MUSIC_PROVIDER` 改为 `audius`。
 
 健康检查：<http://localhost:8000/health>；API 文档：<http://localhost:8000/docs>。
 

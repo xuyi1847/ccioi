@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     music_provider: str = "mock"
     audius_app_name: str = "MHz"
+    musicbrainz_user_agent: str = "MHz/0.1 (https://www.ccioi.com)"
     database_url: str = "sqlite+aiosqlite:///./mhz.db"
     redis_url: str = "redis://localhost:6379/0"
     apple_team_id: str | None = None

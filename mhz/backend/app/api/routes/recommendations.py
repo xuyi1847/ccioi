@@ -15,7 +15,7 @@ async def next_recommendation(payload: RecommendationIn, repo: MusicRepository =
     channel = await repo.get_channel(payload.channel_id)
     if not channel: raise HTTPException(404, "Channel not found")
     history = await repo.recent_events(payload.user_id)
-    provider_name = {"apple": "appleMusic", "audius": "audius"}.get(settings.music_provider, "mock")
+    provider_name = {"apple": "appleMusic", "audius": "audius", "musicbrainz": "musicbrainz"}.get(settings.music_provider, "mock")
     candidates = await repo.candidate_tracks(set(payload.exclude_track_ids), provider_name, "zh" if channel.id == "chinese" else None)
     engine = RecommendationEngine()
     ranked = engine.rank(candidates, history, channel, set(payload.exclude_track_ids), await repo.skip_counts(payload.user_id))
@@ -30,6 +30,8 @@ async def next_recommendation(payload: RecommendationIn, repo: MusicRepository =
                        artworkUrl=track.metadata_json.get("artworkUrl"), durationMs=track.duration_ms,
                        streamUrl=provider.provider_metadata.get("streamUrl"),
                        licenseUrl=provider.provider_metadata.get("licenseUrl"),
+                       playbackType=provider.provider_metadata.get("playbackType", "stream" if provider.provider_metadata.get("streamUrl") else "external"),
+                       externalLinks=provider.provider_metadata.get("externalLinks", {}),
                        provider=ProviderOut(name=provider.provider, trackId=provider.provider_track_id)),
         reason=ReasonOut(type=selected.reason if selected else "fallback", confidence=max(0.1, min(0.99, selected.score if selected else 0.2))),
     )

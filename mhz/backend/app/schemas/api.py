@@ -2,7 +2,7 @@ import uuid
 from typing import Any, Literal
 from pydantic import BaseModel, Field
 
-EventType = Literal["impression", "play_start", "play_30s", "play_complete", "skip", "dislike", "favorite", "unfavorite", "replay"]
+EventType = Literal["impression", "play_start", "play_30s", "play_complete", "external_play", "skip", "dislike", "favorite", "unfavorite", "replay"]
 
 
 class AnonymousUserOut(BaseModel):
@@ -54,6 +54,8 @@ class TrackOut(BaseModel):
     duration_ms: int | None = Field(None, alias="durationMs")
     stream_url: str | None = Field(None, alias="streamUrl")
     license_url: str | None = Field(None, alias="licenseUrl")
+    playback_type: str = Field("stream", alias="playbackType")
+    external_links: dict[str, str] = Field(default_factory=dict, alias="externalLinks")
     provider: ProviderOut
     model_config = {"populate_by_name": True}
 

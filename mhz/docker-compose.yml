@@ -22,8 +22,9 @@ services:
   backend:
     build: ./backend
     environment:
-      MUSIC_PROVIDER: ${MUSIC_PROVIDER:-mock}
+      MUSIC_PROVIDER: ${MUSIC_PROVIDER:-musicbrainz}
       AUDIUS_APP_NAME: ${AUDIUS_APP_NAME:-MHz}
+      MUSICBRAINZ_USER_AGENT: ${MUSICBRAINZ_USER_AGENT:-MHz/0.1 (https://www.ccioi.com)}
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://mhz:mhz@postgres:5432/mhz}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       JWT_SECRET: ${JWT_SECRET:-local-development-only}
