@@ -30,7 +30,7 @@ export default function Home(){
   },[]);
 
   const playItem=useCallback(async(item:Recommendation)=>{
-    if(!item.track.streamUrl)throw new Error("这首歌曲没有可播放的 Jamendo 音频地址");
+    if(!item.track.streamUrl)throw new Error("这首歌曲没有可播放的 Audius 音频地址");
     const player=audio.current;
     if(!player)throw new Error("播放器尚未初始化");
     sent30.current=false;
@@ -56,18 +56,18 @@ export default function Home(){
     const onEnded=()=>{void record("play_complete",undefined,100).then(()=>advance.current())};
     const onPlay=()=>usePlayer.getState().set({playing:true});
     const onPause=()=>usePlayer.getState().set({playing:false});
-    const onError=()=>usePlayer.getState().set({playing:false,error:"Jamendo 音频加载失败，请跳过此曲"});
+    const onError=()=>usePlayer.getState().set({playing:false,error:"Audius 音频加载失败，请跳过此曲"});
     player.addEventListener("timeupdate",onTime);player.addEventListener("ended",onEnded);player.addEventListener("play",onPlay);player.addEventListener("pause",onPause);player.addEventListener("error",onError);
     return()=>{player.pause();player.removeAttribute("src");player.load()};
   },[fetchNext,record]);
 
   useEffect(()=>{void(async()=>{try{let id=localStorage.getItem(USER_KEY);if(!id){id=(await api.anonymous()).userId;localStorage.setItem(USER_KEY,id)}userId.current=id;const channels=await api.channels();usePlayer.getState().set({channels,channel:channels[0]})}catch(error){usePlayer.getState().set({error:error instanceof Error?error.message:"MHz 无法启动"})}})()},[]);
 
-  const connect=async()=>{state.set({loading:true,error:undefined});try{const catalog=await api.discover(100);if(!catalog.count)throw new Error("Jamendo 没有返回可播放歌曲");const current=await fetchNext();if(!current)throw new Error("暂时没有可播放歌曲");state.set({connected:true});await playItem(current);state.set({next:await fetchNext(state.channel,[current.track.id])})}catch(error){state.set({connected:false,error:error instanceof Error?error.message:"连接 Jamendo 失败"})}finally{state.set({loading:false})}};
+  const connect=async()=>{state.set({loading:true,error:undefined});try{const catalog=await api.discover(100);if(!catalog.count)throw new Error("Audius 没有返回可播放歌曲");const current=await fetchNext();if(!current)throw new Error("暂时没有可播放歌曲");state.set({connected:true});await playItem(current);state.set({next:await fetchNext(state.channel,[current.track.id])})}catch(error){state.set({connected:false,error:error instanceof Error?error.message:"连接 Audius 失败"})}finally{state.set({loading:false})}};
   const changeChannel=async(channel:Channel)=>{state.set({channel,loading:true,next:undefined});try{const current=usePlayer.getState().current,item=await fetchNext(channel,current?[current.track.id]:[]);if(item){await playItem(item);state.set({next:await fetchNext(channel,[item.track.id])})}}catch(error){state.set({error:error instanceof Error?error.message:"切台失败"})}finally{state.set({loading:false})}};
   const toggle=async()=>{const player=audio.current;if(!player)return;try{if(player.paused)await player.play();else player.pause()}catch{state.set({error:"无法播放此音频，请尝试下一首"})}};
 
-  return <main className="relative flex min-h-screen flex-col items-center px-5 py-8 sm:py-12"><div className="noise"/><header className="z-10 flex w-full max-w-5xl items-center justify-between"><div className="display text-2xl font-bold">MHz</div><div className="caps text-[var(--muted)]">Independent radio · Jamendo</div></header>
+  return <main className="relative flex min-h-screen flex-col items-center px-5 py-8 sm:py-12"><div className="noise"/><header className="z-10 flex w-full max-w-5xl items-center justify-between"><div className="display text-2xl font-bold">MHz</div><div className="caps text-[var(--muted)]">Independent radio · Audius</div></header>
     {!state.connected?<section className="z-10 flex flex-1 flex-col items-center justify-center pb-20 text-center"><div className="display text-[clamp(72px,18vw,170px)] leading-none">87.5</div><p className="caps mt-3 text-[var(--muted)]">Signal found</p><h1 className="mt-12 max-w-lg text-2xl font-normal sm:text-4xl">不是播放你喜欢的歌，<br/>而是找到你的下一首喜欢。</h1><div className="mt-10"><StartListeningButton busy={state.loading} onStart={connect}/></div><p className="mt-4 text-xs text-[var(--muted)]">真实独立音乐 · HTML5 Audio 播放</p></section>:
     <section className="z-10 flex w-full max-w-5xl flex-1 flex-col items-center justify-between gap-9 pt-8"><div className="text-center"><div className="display text-6xl sm:text-7xl">{Number(state.channel?.frequency||87.5).toFixed(1)}</div><p className="caps mt-2 text-[var(--muted)]">{state.channel?.name} · {state.channel?.channelType}</p></div>{state.current?<Player item={state.current} playing={state.playing} progress={state.progress} onToggle={()=>void toggle()} onFavorite={()=>void record("favorite")} onSkip={()=>void skip()} onDislike={()=>void skip(true)}/>:<div className="pulse caps">Tuning signal…</div>}<RadioDial channels={state.channels} current={state.channel} onSelect={changeChannel}/></section>}
     {state.error&&<div className="fixed bottom-5 z-20 max-w-[90vw] rounded-full bg-black px-5 py-3 text-center text-xs text-white">{state.error}</div>}

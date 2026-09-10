@@ -2,33 +2,34 @@
 
 > 不是播放你喜欢的歌，而是找到你的下一首喜欢。
 
-MHz 是一个极简私人音乐电台。当前 PoC 使用 Jamendo 的真实独立音乐和浏览器 HTML5 Audio，验证连续播放与行为驱动的私人推荐闭环。它不是歌单或搜索型音乐 App。
+MHz 是一个极简私人音乐电台。当前 PoC 使用 Audius 的真实独立音乐和浏览器 HTML5 Audio，验证连续播放与行为驱动的私人推荐闭环。它不是歌单或搜索型音乐 App。
 
-## Jamendo 真实播放 PoC
+## Audius 真实播放 PoC
 
-Jamendo 曾公开的测试 client ID `709fa152` 已被官方停用（API 返回 suspended application），不能继续使用。请在 Jamendo Developer Portal 免费创建应用，然后配置：
+Audius 当前公开 Trending、搜索和 Stream 接口无需用户登录或付费密钥。配置：
 
 ```env
-MUSIC_PROVIDER=jamendo
-JAMENDO_CLIENT_ID=你的_client_id
+MUSIC_PROVIDER=audius
+AUDIUS_APP_NAME=MHz
 ```
 
 随后运行：
 
 ```bash
+cp .env.example .env
 docker compose up --build
 ```
 
-打开 <http://localhost:3000>，点击 `START LISTENING`。后端会从 `/v3.0/tracks` 导入真实候选歌曲，前端直接播放响应中的 `audio` URL，不下载、不代理、不做离线缓存。
+打开 <http://localhost:3000>，点击 `START LISTENING`。后端从 Audius Trending 导入真实候选歌曲，前端通过官方 `/v1/tracks/{id}/stream` 地址播放，不下载、不代理、不做离线缓存。
 
 ## 结构
 
-- `frontend/`：Next.js、TypeScript、TailwindCSS、Zustand、MusicKit JS
+- `frontend/`：Next.js、TypeScript、TailwindCSS、Zustand、HTML5 Audio
 - `backend/`：FastAPI、SQLAlchemy 2 async、Alembic、规则推荐
 - PostgreSQL：歌曲、Provider 映射、频道和行为
 - Redis：为下一阶段候选缓存预留
 
-业务 Track UUID 与 Apple Music Catalog ID 始终分离，Provider ID 只保存在 `track_providers`。
+业务 Track UUID 与 Audius Track ID 始终分离，Provider ID 只保存在 `track_providers`。
 
 ## 快速启动（Mock）
 
@@ -36,7 +37,7 @@ docker compose up --build
 docker compose up --build
 ```
 
-打开 <http://localhost:3000>，点击 Connect Apple Music。没有 Apple 配置时会自动使用 Mock Provider，可测试切台、播放/暂停、Favorite、Skip、Dislike、预取和自动下一首。
+打开 <http://localhost:3000>，点击 `START LISTENING`，可测试切台、播放/暂停、Favorite、Skip、Dislike、预取和自动下一首。
 
 Mock 模式使用安全的 Compose 默认值，无需先创建 `.env`。要改配置时再执行 `cp .env.example .env`。
 
@@ -98,6 +99,7 @@ make build
 - `POST /api/v1/users/anonymous`
 - `GET /api/v1/channels`
 - `GET /api/v1/tracks/search?q=Radiohead`
+- `POST /api/v1/tracks/discover?limit=100`
 - `POST /api/v1/recommendations/next`
 - `POST /api/v1/events`
 - `GET /api/v1/apple/developer-token`

@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     app_name: str = "MHz API"
     environment: str = "development"
     music_provider: str = "mock"
-    jamendo_client_id: str | None = None
+    audius_app_name: str = "MHz"
     database_url: str = "sqlite+aiosqlite:///./mhz.db"
     redis_url: str = "redis://localhost:6379/0"
     apple_team_id: str | None = None

@@ -15,7 +15,7 @@ async def next_recommendation(payload: RecommendationIn, repo: MusicRepository =
     channel = await repo.get_channel(payload.channel_id)
     if not channel: raise HTTPException(404, "Channel not found")
     history = await repo.recent_events(payload.user_id)
-    provider_name = {"apple": "appleMusic", "jamendo": "jamendo"}.get(settings.music_provider, "mock")
+    provider_name = {"apple": "appleMusic", "audius": "audius"}.get(settings.music_provider, "mock")
     candidates = await repo.candidate_tracks(set(payload.exclude_track_ids), provider_name)
     engine = RecommendationEngine()
     ranked = engine.rank(candidates, history, channel, set(payload.exclude_track_ids), await repo.skip_counts(payload.user_id))
