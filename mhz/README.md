@@ -81,18 +81,20 @@ npm run dev
 
 1. 在 Apple Developer 创建 Media/MusicKit Identifier 和 MusicKit 私钥。
 2. 将 `.p8` 放在服务端安全位置，绝不能放进前端或提交 Git。
-3. 设置 `.env`：
+3. 将私钥放入 `mhz/secrets/apple_musickit.p8`（该文件被 Git 忽略），并设置 `.env`：
 
 ```env
 MUSIC_PROVIDER=apple
 APPLE_TEAM_ID=YOUR_TEAM_ID
 APPLE_KEY_ID=YOUR_KEY_ID
-APPLE_PRIVATE_KEY_PATH=/run/secrets/AuthKey_xxx.p8
+APPLE_PRIVATE_KEY_PATH=/run/secrets/apple_musickit.p8
 APPLE_MUSIC_STOREFRONT=cn
 APPLE_MUSIC_ORIGIN=http://localhost:3000
 ```
 
 后端签发并缓存 ES256 Developer Token，浏览器通过 `/api/v1/apple/developer-token` 获取它，然后由 MusicKit 管理用户授权。Apple 模式首次连接会从 Catalog 导入候选歌曲，再进入推荐播放。
+
+用户点击连接后，MusicKit 在浏览器取得 Music User Token。前端只在本次授权请求中将它传给 `/api/v1/apple/bootstrap`，后端读取用户资料库、最近播放和常听歌曲，并按喜欢的歌手扩展发现候选；Music User Token 不写入数据库和日志。播放器使用 Apple Catalog ID 在浏览器中播放，音频不经过 MHz 服务器。
 
 生产环境应把 `.p8` 作为容器 secret 只挂载给 backend，并把 `APPLE_MUSIC_ORIGIN` 改成精确的 HTTPS Origin。
 

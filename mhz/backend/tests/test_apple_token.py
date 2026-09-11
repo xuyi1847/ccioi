@@ -1,5 +1,6 @@
 from app.core.config import Settings
 from app.services.apple_token import AppleDeveloperTokenService
+from app.services.providers.apple import AppleMusicProvider
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
@@ -19,3 +20,17 @@ def test_apple_token_is_signed_and_cached(tmp_path) -> None:
     second, second_expiry = service.get_token()
     assert first == second
     assert first_expiry == second_expiry
+
+
+def test_apple_library_song_uses_catalog_id_for_playback() -> None:
+    track = AppleMusicProvider._map({
+        "id": "library-song-id",
+        "type": "library-songs",
+        "attributes": {
+            "name": "晴天",
+            "artistName": "周杰伦",
+            "playParams": {"catalogId": "535824738"},
+        },
+    })
+    assert track.provider_id == "535824738"
+    assert track.metadata["playbackType"] == "musickit"

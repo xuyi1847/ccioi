@@ -5,7 +5,7 @@ const platformNames:Record<string,string>={appleMusic:"Apple Music",qqMusic:"QQ 
 
 export function Player({item,playing,progress,onToggle,onFavorite,onSkip,onDislike,onExternal}:{item:Recommendation;playing:boolean;progress:number;onToggle:()=>void;onFavorite:()=>void;onSkip:()=>void;onDislike:()=>void;onExternal:()=>void}){
   const track=item.track;
-  const canStream=Boolean(track.streamUrl);
+  const canStream=Boolean(track.streamUrl)||track.playbackType==="musickit";
   return <div className="flex w-full flex-col items-center">
     <div className="soft-shadow relative aspect-square w-[min(62vw,330px)] overflow-hidden bg-[#d2d0c8]">
       {/* A custom loader preserves Audius' selected decentralized content node. */}

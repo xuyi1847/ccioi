@@ -22,7 +22,7 @@ services:
   backend:
     build: ./backend
     environment:
-      MUSIC_PROVIDER: ${MUSIC_PROVIDER:-musicbrainz}
+      MUSIC_PROVIDER: ${MUSIC_PROVIDER:-apple}
       AUDIUS_APP_NAME: ${AUDIUS_APP_NAME:-MHz}
       MUSICBRAINZ_USER_AGENT: ${MUSICBRAINZ_USER_AGENT:-MHz/0.1 (https://www.ccioi.com)}
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://mhz:mhz@postgres:5432/mhz}
@@ -33,6 +33,8 @@ services:
       APPLE_PRIVATE_KEY_PATH: ${APPLE_PRIVATE_KEY_PATH:-}
       APPLE_MUSIC_STOREFRONT: ${APPLE_MUSIC_STOREFRONT:-cn}
       APPLE_MUSIC_ORIGIN: ${APPLE_MUSIC_ORIGIN:-http://localhost:3000}
+    volumes:
+      - ./secrets:/run/secrets:ro
     ports: ["8000:8000"]
     depends_on:
       postgres: { condition: service_healthy }

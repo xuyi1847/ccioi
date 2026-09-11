@@ -1,5 +1,6 @@
 declare global { interface Window { MusicKit?: { configure:(config:Record<string,unknown>)=>Promise<void>; getInstance:()=>MusicKitInstance } } }
-type MusicKitInstance={authorize:()=>Promise<string>;unauthorize:()=>Promise<void>;setQueue:(value:{song:string})=>Promise<void>;play:()=>Promise<void>;pause:()=>void;skipToNextItem:()=>Promise<void>;isAuthorized:boolean};
+type PlaybackListener=()=>void;
+type MusicKitInstance={authorize:()=>Promise<string>;unauthorize:()=>Promise<void>;setQueue:(value:{song:string})=>Promise<void>;play:()=>Promise<void>;pause:()=>void;stop:()=>void;skipToNextItem:()=>Promise<void>;addEventListener:(name:string,listener:PlaybackListener)=>void;removeEventListener:(name:string,listener:PlaybackListener)=>void;currentPlaybackTime:number;currentPlaybackDuration:number;isAuthorized:boolean};
 let instance:MusicKitInstance|null=null;
 
 function loadScript():Promise<void>{return new Promise((resolve,reject)=>{if(window.MusicKit)return resolve();const script=document.createElement("script");script.src="https://js-cdn.music.apple.com/musickit/v3/musickit.js";script.onload=()=>resolve();script.onerror=()=>reject(new Error("MusicKit failed to load"));document.head.appendChild(script)})}
@@ -8,7 +9,10 @@ export const musicKit={
   authorize:async()=>{if(!instance)throw new Error("MusicKit is not configured");return instance.authorize()},
   unauthorize:async()=>instance?.unauthorize(),
   play:async(trackId:string)=>{if(!instance)throw new Error("MusicKit is not configured");await instance.setQueue({song:trackId});await instance.play()},
+  resume:async()=>{if(!instance)throw new Error("MusicKit is not configured");await instance.play()},
   pause:()=>instance?.pause(),
+  stop:()=>instance?.stop(),
   skip:async()=>instance?.skipToNextItem(),
+  observeTime:(listener:(current:number,duration:number)=>void)=>{if(!instance)throw new Error("MusicKit is not configured");const current=instance;const handler=()=>listener(current.currentPlaybackTime||0,current.currentPlaybackDuration||0);current.addEventListener("playbackTimeDidChange",handler);return()=>current.removeEventListener("playbackTimeDidChange",handler)},
   get configured(){return Boolean(instance)}
 };
