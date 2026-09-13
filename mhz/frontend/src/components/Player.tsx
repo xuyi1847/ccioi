@@ -3,22 +3,43 @@ import type {Recommendation} from "@/services/api";
 
 const platformNames:Record<string,string>={appleMusic:"Apple Music",qqMusic:"QQ 音乐",netease:"网易云"};
 
-export function Player({item,playing,progress,onToggle,onFavorite,onSkip,onDislike,onExternal}:{item:Recommendation;playing:boolean;progress:number;onToggle:()=>void;onFavorite:()=>void;onSkip:()=>void;onDislike:()=>void;onExternal:()=>void}){
+function formatTime(milliseconds?:number,progress=0){
+  const seconds=Math.max(0,Math.round((milliseconds||0)*progress/100/1000));
+  return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,"0")}`;
+}
+
+type Props={item:Recommendation;playing:boolean;progress:number;busy:boolean;frequency:number;channelName:string;onToggle:()=>void;onFavorite:()=>void;onSkip:()=>void;onDislike:()=>void;onExternal:()=>void};
+
+export function Player({item,playing,progress,busy,frequency,channelName,onToggle,onFavorite,onSkip,onDislike,onExternal}:Props){
   const track=item.track;
   const canStream=Boolean(track.streamUrl)||track.playbackType==="musickit";
-  return <div className="flex w-full flex-col items-center">
-    <div className="soft-shadow relative aspect-square w-[min(62vw,330px)] overflow-hidden bg-[#d2d0c8]">
-      {/* A custom loader preserves Audius' selected decentralized content node. */}
-      {track.artworkUrl?<Image loader={({src})=>src} unoptimized src={track.artworkUrl} alt={`${track.title} artwork`} fill sizes="330px" priority className="object-cover grayscale-[20%]"/>:<div className="grid h-full place-items-center text-5xl">MHz</div>}
+  return <article className="player-card w-full">
+    <div className="player-art relative aspect-square overflow-hidden bg-[#d8d5cc]">
+      {track.artworkUrl?<Image loader={({src})=>src} unoptimized src={track.artworkUrl} alt={`${track.title} artwork`} fill sizes="(max-width: 767px) 88vw, 420px" priority className="object-cover"/>:<div className="display grid h-full place-items-center text-6xl text-black/25">MHz</div>}
+      <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/30 to-transparent"/>
+      <span className="caps absolute bottom-4 left-4 text-white/90">{track.provider.name==="appleMusic"?"Playing with Apple Music":"MHz discovery"}</span>
     </div>
-    <div className="mt-8 min-h-16 text-center"><h2 className="text-xl font-medium tracking-tight">{track.title}</h2><p className="mt-1 text-sm text-[var(--muted)]">{track.artist}</p>{track.licenseUrl&&<a href={track.licenseUrl} target="_blank" rel="noreferrer" className="mt-2 block text-[10px] uppercase tracking-widest text-[var(--muted)] underline">Track license</a>}</div>
-    <div className="mt-5 h-px w-[min(62vw,330px)] bg-black/10"><div className="h-full bg-[var(--red)] transition-[width] duration-1000" style={{width:`${progress}%`}}/></div>
-    {!canStream&&<div className="mt-5 flex flex-wrap justify-center gap-2">{Object.entries(track.externalLinks||{}).map(([platform,url])=><a key={platform} href={url} target="_blank" rel="noreferrer" onClick={onExternal} className="rounded-full border border-black/20 px-4 py-2 text-xs transition hover:bg-black hover:text-white">去 {platformNames[platform]||platform} 听</a>)}</div>}
-    <div className="mt-7 flex items-center gap-7">
-      <button aria-label="Favorite" onClick={onFavorite} className="text-xl opacity-55 transition hover:scale-110 hover:opacity-100">♡</button>
-      <button aria-label={canStream?(playing?"Pause":"Play"):"External playback"} onClick={onToggle} disabled={!canStream} className="grid h-14 w-14 place-items-center rounded-full border border-black/25 text-lg transition enabled:hover:bg-black enabled:hover:text-white disabled:cursor-default disabled:opacity-35">{canStream?(playing?"Ⅱ":"▶"):"↗"}</button>
-      <button aria-label="Skip" onClick={onSkip} className="text-xl opacity-55 transition hover:translate-x-1 hover:opacity-100">»</button>
-      <button aria-label="Dislike" onClick={onDislike} className="text-lg opacity-55 transition hover:rotate-6 hover:opacity-100">×</button>
+    <div className="flex min-w-0 flex-col px-6 py-6 sm:px-8 sm:py-8">
+      <div className="flex items-start justify-between gap-5 border-b border-black/10 pb-5">
+        <div><p className="caps text-[var(--muted)]">Now tuned</p><p className="mt-1 text-sm font-medium">{channelName}</p></div>
+        <div className="text-right"><p className="display text-4xl leading-none sm:text-5xl">{frequency.toFixed(1)}</p><p className="caps mt-1 text-[var(--muted)]">MHz</p></div>
+      </div>
+      <div className="flex min-h-[126px] flex-1 flex-col justify-center py-6">
+        <h2 className="line-clamp-2 text-[clamp(1.55rem,3vw,2.35rem)] font-medium leading-tight tracking-[-.035em]">{track.title}</h2>
+        <p className="mt-2 truncate text-sm text-[var(--muted)]">{track.artist}{track.album?` · ${track.album}`:""}</p>
+      </div>
+      <div>
+        <div className="h-[3px] overflow-hidden rounded-full bg-black/10"><div className="h-full rounded-full bg-[var(--red)] transition-[width] duration-300 ease-linear" style={{width:`${progress}%`}}/></div>
+        <div className="mt-2 flex justify-between text-[10px] tabular-nums text-[var(--muted)]"><span>{formatTime(track.durationMs,progress)}</span><span>{formatTime(track.durationMs,100)}</span></div>
+      </div>
+      {!canStream&&<div className="mt-4 flex flex-wrap gap-2">{Object.entries(track.externalLinks||{}).map(([platform,url])=><a key={platform} href={url} target="_blank" rel="noreferrer" onClick={onExternal} className="rounded-full border border-black/15 px-3 py-2 text-xs transition hover:bg-black hover:text-white">{platformNames[platform]||platform} ↗</a>)}</div>}
+      <div className="mt-5 grid grid-cols-[44px_1fr_56px_1fr_44px] items-center gap-2">
+        <button aria-label="不喜欢" title="不喜欢" disabled={busy} onClick={onDislike} className="control-secondary">×</button>
+        <button aria-label="喜欢" title="喜欢" disabled={busy} onClick={onFavorite} className="control-text">♡ <span>喜欢</span></button>
+        <button aria-label={playing?"暂停":"播放"} disabled={!canStream||busy} onClick={onToggle} className="control-primary">{busy?"…":playing?"Ⅱ":"▶"}</button>
+        <button aria-label="下一首" disabled={busy} onClick={onSkip} className="control-text"><span>下一首</span> »</button>
+        <div className="h-11 w-11"/>
+      </div>
     </div>
-  </div>
+  </article>;
 }
