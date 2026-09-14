@@ -22,10 +22,10 @@ button{font:inherit}.noise{position:fixed;inset:0;pointer-events:none;opacity:.0
   .channel-button{min-width:112px;scroll-snap-align:start}
   .control-text span{display:none}
   .fm-connected{height:100dvh;min-height:0;overflow:hidden;padding:10px 12px}
-  .fm-connected>header{flex:0 0 auto;padding-bottom:8px}
+  .fm-connected>header{display:none}
   .fm-connected>section{min-height:0;padding-top:8px;padding-bottom:6px;gap:8px}
   .fm-connected .player-card{min-height:0;flex:1}
-  .fm-connected .player-art{height:min(40dvh,360px);aspect-ratio:auto}
+  .fm-connected .player-art{width:100%;height:auto;aspect-ratio:1/1}
   .fm-connected .player-card>div:last-child{padding:10px 16px}
   .fm-connected .player-card>div:last-child>div:first-child{display:none}
   .fm-connected .player-card>div:last-child>div:nth-child(2){min-height:68px;padding-block:8px}
@@ -36,7 +36,6 @@ button{font:inherit}.noise{position:fixed;inset:0;pointer-events:none;opacity:.0
   .fm-connected .channel-button span+span{margin-top:4px}
 }
 @media(max-width:767px) and (max-height:700px){
-  .fm-connected .player-art{height:min(34dvh,225px)}
   .fm-connected .player-card>div:last-child>div:nth-child(2){min-height:58px;padding-block:5px}
   .fm-connected .channel-strip>div:first-child{display:none}
 }
