@@ -74,8 +74,18 @@ export default function Home(){
     usePlayer.getState().set({loading:true});
     const current=usePlayer.getState();
     void record(dislike?"dislike":"skip");
-    try{const item=current.next||await fetchNext(current.channel,current.current?[current.current.track.id]:[]);if(!item)throw new Error("暂时没有可播放的下一首");await playItem(item);state.set({next:await fetchNext(current.channel,[item.track.id])})}
-    catch(error){state.set({error:error instanceof Error?error.message:"切换下一首失败"})}
+    try{
+      const excluded=current.current?[current.current.track.id]:[];
+      let item=current.next,lastError:unknown;
+      for(let attempt=0;attempt<3;attempt++){
+        item=item||await fetchNext(current.channel,excluded);
+        if(!item)break;
+        try{await playItem(item);state.set({next:await fetchNext(current.channel,[item.track.id,...excluded])});return}
+        catch(error){lastError=error;void record("skip",item,0);excluded.push(item.track.id);item=undefined;state.set({next:undefined})}
+      }
+      throw lastError||new Error("暂时没有可播放的下一首");
+    }
+    catch(error){state.set({error:error instanceof Error&&error.message.includes("could not be resolved")?"部分歌曲当前地区不可用，已尝试跳过":"切换下一首失败，请重试"})}
     finally{operationPending.current=false;usePlayer.getState().set({loading:false})}
   },[fetchNext,playItem,record,state]);
 
@@ -136,7 +146,20 @@ export default function Home(){
     finally{state.set({loading:false})}
   };
   const changeChannel=async(channel:Channel)=>{if(operationPending.current)return;operationPending.current=true;state.set({channel,loading:true,next:undefined});try{if(channel.id==="chinese"&&!appleMode.current){const imported=await api.discoverChinese(100);if(!imported.count)throw new Error("当前没有找到可用的华语歌曲")}const current=usePlayer.getState().current,item=await fetchNext(channel,current?[current.track.id]:[]);if(item){await playItem(item);state.set({next:await fetchNext(channel,[item.track.id])})}}catch(error){state.set({error:error instanceof Error?error.message:"切台失败"})}finally{operationPending.current=false;state.set({loading:false})}};
-  const toggle=async()=>{const player=audio.current;if(!player||operationPending.current)return;operationPending.current=true;state.set({loading:true});try{if(appleMode.current){if(state.playing){musicKit.pause();state.set({playing:false})}else if(!appleQueued.current&&state.current){await musicKit.play(state.current.track.provider.trackId);appleQueued.current=true;state.set({playing:true});void record("play_start",state.current,0)}else{await musicKit.resume();state.set({playing:true})}}else if(player.paused)await player.play();else player.pause()}catch(error){state.set({playing:false,error:error instanceof Error?error.message:"无法播放此音频，请尝试下一首"})}finally{operationPending.current=false;state.set({loading:false})}};
+  const toggle=async()=>{
+    const player=audio.current;if(!player||operationPending.current)return;
+    operationPending.current=true;state.set({loading:true});
+    let skipUnavailable=false;
+    try{
+      if(appleMode.current){
+        if(state.playing){musicKit.pause();state.set({playing:false})}
+        else if(!appleQueued.current&&state.current){await musicKit.play(state.current.track.provider.trackId);appleQueued.current=true;state.set({playing:true});void record("play_start",state.current,0)}
+        else{await musicKit.resume();state.set({playing:true})}
+      }else if(player.paused)await player.play();else player.pause();
+    }catch(error){skipUnavailable=error instanceof Error&&error.message.includes("could not be resolved");state.set({playing:false,error:skipUnavailable?"这首歌当前地区不可用，正在跳过…":error instanceof Error?error.message:"无法播放此音频，请尝试下一首"})}
+    finally{operationPending.current=false;state.set({loading:false})}
+    if(skipUnavailable)void skip(false);
+  };
 
   return <main className="relative flex min-h-[100svh] flex-col items-center px-4 py-5 sm:px-8 sm:py-8"><div className="noise"/><header className="z-10 flex w-full max-w-5xl items-center justify-between border-b border-black/10 pb-4"><div className="display text-2xl font-bold">MHz</div><div className="caps whitespace-nowrap text-[var(--muted)]"><span className="hidden sm:inline">Personal radio · </span>Apple Music</div></header>
     {!authenticated?<section className="z-10 flex w-full flex-1 flex-col items-center justify-center pb-12 text-center"><div className="display text-[clamp(64px,16vw,140px)] leading-none">87.5</div><h1 className="mt-8 text-2xl sm:text-4xl">登录 ccioi，开始收听</h1><p className="mt-3 text-sm text-[var(--muted)]">你的喜好和收听记录会同步到同一个账号</p><form onSubmit={login} className="mt-8 flex w-full max-w-sm flex-col gap-3 text-left"><label className="text-xs text-[var(--muted)]">邮箱<input type="email" autoComplete="email" required value={email} onChange={event=>setEmail(event.target.value)} className="mt-1.5 h-12 w-full rounded-xl border border-black/15 bg-white/70 px-4 text-base text-[var(--ink)] outline-none focus:border-black" placeholder="name@example.com"/></label><label className="text-xs text-[var(--muted)]">密码<span className="relative mt-1.5 block"><input type={showPassword?"text":"password"} autoComplete="current-password" required value={password} onChange={event=>setPassword(event.target.value)} className="h-12 w-full rounded-xl border border-black/15 bg-white/70 px-4 pr-14 text-base text-[var(--ink)] outline-none focus:border-black" placeholder="输入密码"/><button type="button" onClick={()=>setShowPassword(value=>!value)} className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-lg text-[var(--muted)]" aria-label={showPassword?"隐藏密码":"显示密码"} title={showPassword?"隐藏密码":"显示密码"}>{showPassword?"◉":"◎"}</button></span></label>{loginError&&<p className="text-center text-sm text-[var(--red)]">{loginError}</p>}<button type="submit" disabled={loginBusy} className="mt-2 h-12 rounded-full bg-black text-sm text-white disabled:opacity-50">{loginBusy?"登录中…":"登录并进入 MHz"}</button></form></section>:!state.connected?<section className="z-10 flex flex-1 flex-col items-center justify-center pb-20 text-center"><div className="display text-[clamp(72px,18vw,170px)] leading-none">87.5</div><p className="caps mt-3 text-[var(--muted)]">Signal found</p><h1 className="mt-12 max-w-lg text-2xl font-normal sm:text-4xl">不是播放你喜欢的歌，<br/>而是找到你的下一首喜欢。</h1><div className="mt-10"><StartListeningButton busy={state.loading} onStart={connect}/></div><p className="mt-4 text-xs text-[var(--muted)]">使用你自己的 Apple Music 订阅授权播放</p></section>:
