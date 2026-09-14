@@ -1,5 +1,6 @@
 .env
 *.p8
+*.db
 __pycache__/
 .pytest_cache/
 .venv/

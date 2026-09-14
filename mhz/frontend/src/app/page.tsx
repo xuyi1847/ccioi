@@ -8,7 +8,7 @@ import {api,Channel,Recommendation} from "@/services/api";
 import {configureMusicKit,musicKit} from "@/services/musickit";
 import {usePlayer} from "@/stores/player";
 
-const USER_KEY="mhz-user-id";
+const USER_KEY="mhz-user-id-v2";
 
 export default function Home(){
   const state=usePlayer();
