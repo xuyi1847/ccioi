@@ -24,6 +24,7 @@ async def developer_token(service: AppleDeveloperTokenService = Depends(get_appl
 @router.post("/bootstrap")
 async def bootstrap_personal_catalog(
     limit: int = Query(100, ge=20, le=200),
+    seed: str | None = Query(None, max_length=300),
     music_user_token: str = Header(alias="Music-User-Token"),
     user: User = Depends(get_ccioi_user),
     repo: MusicRepository = Depends(get_repository),
@@ -36,7 +37,12 @@ async def bootstrap_personal_catalog(
     provider = AppleMusicProvider(settings, token_service)
     try:
         items = await provider.get_personal_candidates(music_user_token, limit)
-        seed_artists = list(dict.fromkeys(item.artist for item in items if item.artist != "Unknown"))[:5]
+        favorites = await repo.favorite_tracks(user.id)
+        requested_seeds = [item.strip() for item in (seed or "").split(",") if item.strip()][:10]
+        seed_artists = list(dict.fromkeys(
+            requested_seeds + [track.artist_name for track in favorites if track.artist_name]
+            + [item.artist for item in items if item.artist != "Unknown"]
+        ))[:8]
         for query in seed_artists:
             try:
                 items.extend(await provider.search_tracks(query, 12))

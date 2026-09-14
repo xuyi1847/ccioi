@@ -25,7 +25,7 @@ export const api={
   event:(body:Record<string,unknown>)=>request("/events",{method:"POST",body:JSON.stringify(body)}),
   favorites:()=>request<{trackIds:string[]}>("/events/favorites"),
   appleToken:()=>request<{developerToken:string;storefront:string}>("/apple/developer-token"),
-  appleBootstrap:(musicUserToken:string,limit=100)=>request<{count:number;trackIds:string[]}>(`/apple/bootstrap?limit=${limit}`,{method:"POST",headers:{"Music-User-Token":musicUserToken}}),
+  appleBootstrap:(musicUserToken:string,limit=100,seeds:string[]=[])=>request<{count:number;trackIds:string[]}>(`/apple/bootstrap?limit=${limit}${seeds.length?`&seed=${encodeURIComponent(seeds.join(","))}`:""}`,{method:"POST",headers:{"Music-User-Token":musicUserToken}}),
   search:(query:string)=>request<{count:number;trackIds:string[]}>(`/tracks/search?q=${encodeURIComponent(query)}`),
   discover:(limit=100)=>request<{count:number;trackIds:string[]}>(`/tracks/discover?limit=${limit}`,{method:"POST"}),
   discoverChinese:(limit=100)=>request<{count:number;trackIds:string[]}>(`/tracks/discover/chinese?limit=${limit}`,{method:"POST"})

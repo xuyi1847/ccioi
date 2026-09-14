@@ -2,6 +2,7 @@ import Image from "next/image";
 import type {Recommendation} from "@/services/api";
 
 const platformNames:Record<string,string>={appleMusic:"Apple Music",qqMusic:"QQ 音乐",netease:"网易云"};
+const reasonNames:Record<string,string>={artist:"符合你的歌手偏好",genre:"符合你的流派偏好",composer:"来自熟悉的创作者",era:"符合你的年代偏好",language:"符合你的语言偏好",discovery:"为你发现的新歌曲",explore:"探索不同的声音",familiar:"来自熟悉的风格"};
 
 function formatTime(milliseconds?:number,progress=0){
   const seconds=Math.max(0,Math.round((milliseconds||0)*progress/100/1000));
@@ -27,6 +28,7 @@ export function Player({item,playing,progress,busy,liked,frequency,channelName,o
       <div className="flex min-h-[126px] flex-1 flex-col justify-center py-6">
         <h2 className="line-clamp-2 text-[clamp(1.55rem,3vw,2.35rem)] font-medium leading-tight tracking-[-.035em]">{track.title}</h2>
         <p className="mt-2 truncate text-sm text-[var(--muted)]">{track.artist}{track.album?` · ${track.album}`:""}</p>
+        <p className="caps mt-3 text-[10px] text-[var(--red)]">{reasonNames[item.reason.type]||"MHz recommendation"}</p>
       </div>
       <div>
         <div className="h-[3px] overflow-hidden rounded-full bg-black/10"><div className="h-full rounded-full bg-[var(--red)] transition-[width] duration-300 ease-linear" style={{width:`${progress}%`}}/></div>

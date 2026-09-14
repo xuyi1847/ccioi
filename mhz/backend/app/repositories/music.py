@@ -35,6 +35,12 @@ class MusicRepository:
             latest.setdefault(track_id, event_type)
         return [track_id for track_id, event_type in latest.items() if event_type == "favorite"]
 
+    async def favorite_tracks(self, user_id: uuid.UUID) -> list[Track]:
+        ids = await self.favorite_track_ids(user_id)
+        if not ids:
+            return []
+        return list(await self.session.scalars(select(Track).options(selectinload(Track.providers)).where(Track.id.in_(ids))))
+
     async def claim_legacy_user(self, legacy_user_id: uuid.UUID, ccioi_user_id: uuid.UUID) -> int:
         if legacy_user_id == ccioi_user_id:
             return 0

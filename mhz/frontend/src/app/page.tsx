@@ -9,6 +9,8 @@ import {configureMusicKit,musicKit} from "@/services/musickit";
 import {usePlayer} from "@/stores/player";
 
 const LEGACY_USER_KEY="mhz-user-id-v2";
+const SEED_ARTISTS_KEY="mhz-seed-artists";
+function savedSeedArtists():string[]{try{return JSON.parse(localStorage.getItem(SEED_ARTISTS_KEY)||"[]")}catch{return []}}
 
 export default function Home(){
   const state=usePlayer();
@@ -121,7 +123,7 @@ export default function Home(){
       await configureMusicKit(token.developerToken);
       const userToken=await musicKit.authorize();
       appleMode.current=true;
-      const catalog=await api.appleBootstrap(userToken,150);
+      const catalog=await api.appleBootstrap(userToken,150,savedSeedArtists());
       if(!catalog.count)throw new Error("Apple Music 没有返回可推荐歌曲");
       removeAppleObserver.current?.();removeAppleStateObserver.current?.();
       removeAppleObserver.current=musicKit.observeTime((currentTime,duration)=>{

@@ -42,14 +42,21 @@ class RecommendationEngine:
                 continue
             artist_affinity = profile.artists.get(track.artist_name, 0.0)
             genre_affinity = max([profile.genres.get(genre, 0.0) for genre in track.genre or []] or [0.0])
+            features = self.taste_service.track_features(track)
+            composer_affinity = max([profile.composers.get(value, 0.0) for value in features["composers"]] or [0.0])
+            decade_affinity = max([profile.decades.get(value, 0.0) for value in features["decades"]] or [0.0])
+            language_affinity = max([profile.languages.get(value, 0.0) for value in features["languages"]] or [0.0])
+            duration_affinity = max([profile.durations.get(value, 0.0) for value in features["durations"]] or [0.0])
             novelty = 1.0 if track.id not in seen else 0.15
             exploration = random.Random(str(track.id)).random()
-            familiarity = max(0.0, 0.6 * artist_affinity + 0.4 * genre_affinity)
+            familiarity = max(0.0, 0.25 * artist_affinity + 0.30 * genre_affinity + 0.15 * composer_affinity + 0.10 * decade_affinity + 0.10 * language_affinity + 0.10 * duration_affinity)
             discovery = novelty * max(0.15, 0.65 + 0.35 * genre_affinity)
-            score = familiar_ratio * familiarity + discovery_ratio * discovery + explore_ratio * exploration
+            score = familiar_ratio * familiarity + discovery_ratio * discovery + explore_ratio * exploration + 0.05 * track.popularity
             if skip_counts.get(track.id, 0) >= 2:
                 score -= 0.75
-            reason = "familiar" if artist_affinity > 0.45 else "discovery" if novelty > 0.5 else "explore"
+            affinities = {"artist": artist_affinity, "genre": genre_affinity, "composer": composer_affinity, "era": decade_affinity, "language": language_affinity}
+            best_reason, best_affinity = max(affinities.items(), key=lambda item: item[1])
+            reason = best_reason if best_affinity > 0.2 else "discovery" if novelty > 0.5 else "explore"
             ranked.append(RankedTrack(track, score, reason))
         return sorted(ranked, key=lambda item: item.score, reverse=True)
 
