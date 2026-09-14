@@ -26,10 +26,13 @@ export default function Home(){
   const advance=useRef<()=>void>(()=>undefined);
   const appleMode=useRef(false);
   const appleQueued=useRef(false);
+  const appleNextQueued=useRef(false);
+  const appleManualAdvance=useRef(false);
   const appleCompleted=useRef(false);
   const appleSwitching=useRef(false);
   const removeAppleObserver=useRef<(()=>void)|null>(null);
   const removeAppleStateObserver=useRef<(()=>void)|null>(null);
+  const removeAppleItemObserver=useRef<(()=>void)|null>(null);
   const operationPending=useRef(false);
   const appleClock=useRef({current:0,duration:0,updatedAt:0});
 
@@ -52,6 +55,7 @@ export default function Home(){
     if(item.track.playbackType==="musickit"){
       player.pause();player.removeAttribute("src");player.load();
       appleQueued.current=false;
+      appleNextQueued.current=false;
       void record("impression",item,0);
       if(autoplay){appleSwitching.current=true;try{await musicKit.play(item.track.provider.trackId)}finally{appleSwitching.current=false}appleQueued.current=true}
       sent30.current=false;appleCompleted.current=false;appleClock.current={current:0,duration:(item.track.durationMs||0)/1000,updatedAt:performance.now()};
@@ -70,19 +74,20 @@ export default function Home(){
     try{await player.play()}catch(error){state.set({playing:false,error:"浏览器阻止了自动播放，请点击中间的播放按钮"});if(error instanceof DOMException&&error.name==="NotAllowedError")return;throw error}
   },[record,state]);
 
-  const skip=useCallback(async(dislike=false)=>{
+  const skip=useCallback(async(dislike=false,natural=false)=>{
     if(operationPending.current)return;
     operationPending.current=true;
     usePlayer.getState().set({loading:true});
     const current=usePlayer.getState();
-    void record(dislike?"dislike":"skip");
+    if(!natural)void record(dislike?"dislike":"skip");
     try{
       const excluded=current.current?[current.current.track.id]:[];
       let item=current.next,lastError:unknown;
+      if(appleMode.current&&item&&appleNextQueued.current){appleManualAdvance.current=true;try{await musicKit.skip()}catch(error){appleManualAdvance.current=false;throw error}return}
       for(let attempt=0;attempt<3;attempt++){
         item=item||await fetchNext(current.channel,excluded);
         if(!item)break;
-        try{await playItem(item);state.set({next:await fetchNext(current.channel,[item.track.id,...excluded])});return}
+        try{await playItem(item);const following=await fetchNext(current.channel,[item.track.id,...excluded]);state.set({next:following});if(following&&appleMode.current)appleNextQueued.current=await musicKit.enqueue(following.track.provider.trackId).catch(()=>false);return}
         catch(error){lastError=error;void record("unavailable",item,0);excluded.push(item.track.id);item=undefined;state.set({next:undefined})}
       }
       throw lastError||new Error("暂时没有可播放的下一首");
@@ -91,7 +96,7 @@ export default function Home(){
     finally{operationPending.current=false;usePlayer.getState().set({loading:false})}
   },[fetchNext,playItem,record,state]);
 
-  useEffect(()=>{advance.current=()=>{void skip(false)}},[skip]);
+  useEffect(()=>{advance.current=()=>{void skip(false,true)}},[skip]);
 
   useEffect(()=>{
     const player=new Audio();player.preload="auto";audio.current=player;
@@ -101,10 +106,10 @@ export default function Home(){
     const onPause=()=>usePlayer.getState().set({playing:false});
     const onError=()=>usePlayer.getState().set({playing:false,error:"Audius 音频加载失败，请跳过此曲"});
     player.addEventListener("timeupdate",onTime);player.addEventListener("ended",onEnded);player.addEventListener("play",onPlay);player.addEventListener("pause",onPause);player.addEventListener("error",onError);
-    return()=>{player.pause();player.removeAttribute("src");player.load();removeAppleObserver.current?.();removeAppleStateObserver.current?.()};
+    return()=>{player.pause();player.removeAttribute("src");player.load();removeAppleObserver.current?.();removeAppleStateObserver.current?.();removeAppleItemObserver.current?.()};
   },[fetchNext,record]);
 
-  useEffect(()=>{const timer=window.setInterval(()=>{const current=usePlayer.getState(),clock=appleClock.current;if(!appleMode.current||!current.playing||!clock.duration||appleSwitching.current)return;const elapsed=(performance.now()-clock.updatedAt)/1000,estimatedTime=Math.min(clock.duration,clock.current+elapsed),progress=estimatedTime/clock.duration*100;current.set({progress:Math.min(100,progress)});if(estimatedTime>1&&clock.duration-estimatedTime<=1&&!appleCompleted.current&&!operationPending.current){appleCompleted.current=true;void record("play_complete",undefined,100).then(()=>advance.current())}},250);return()=>window.clearInterval(timer)},[record]);
+  useEffect(()=>{const timer=window.setInterval(()=>{const current=usePlayer.getState(),clock=appleClock.current;if(!appleMode.current||!current.playing||!clock.duration||appleSwitching.current)return;const elapsed=(performance.now()-clock.updatedAt)/1000,estimatedTime=Math.min(clock.duration,clock.current+elapsed),progress=estimatedTime/clock.duration*100;current.set({progress:Math.min(100,progress)});if(estimatedTime>1&&clock.duration-estimatedTime<=1&&!appleCompleted.current&&!operationPending.current){appleCompleted.current=true;void record("play_complete",undefined,100).then(()=>{if(!appleNextQueued.current)advance.current()})}},250);return()=>window.clearInterval(timer)},[record]);
 
   useEffect(()=>{const next=state.next?.track.artworkUrl;if(!next)return;const image=new window.Image();image.src=next},[state.next]);
 
@@ -132,13 +137,25 @@ export default function Home(){
         const progress=Math.min(100,currentTime/duration*100),current=usePlayer.getState();
         current.set({progress});
         if(currentTime>=30&&!sent30.current){sent30.current=true;void record("play_30s")}
-        if(progress>=60&&!current.next&&current.current)void fetchNext(current.channel,[current.current.track.id]).then(next=>current.set({next})).catch(()=>undefined);
-        if(current.playing&&currentTime>1&&(duration-currentTime<=1.25||progress>=99.5)&&!appleCompleted.current){appleCompleted.current=true;void record("play_complete",undefined,100).then(()=>advance.current())}
+        if(progress>=60&&!current.next&&current.current)void fetchNext(current.channel,[current.current.track.id]).then(async next=>{current.set({next});if(next)appleNextQueued.current=await musicKit.enqueue(next.track.provider.trackId).catch(()=>false)}).catch(()=>undefined);
+        if(current.playing&&currentTime>1&&(duration-currentTime<=1.25||progress>=99.5)&&!appleCompleted.current){appleCompleted.current=true;void record("play_complete",undefined,100).then(()=>{if(!appleNextQueued.current)advance.current()})}
       });
       removeAppleStateObserver.current=musicKit.observeState((playing,ended)=>{
         if(appleSwitching.current)return;
         usePlayer.getState().set({playing});
-        if(ended&&!appleCompleted.current){appleCompleted.current=true;void record("play_complete",undefined,100).then(()=>advance.current())}
+        if(ended&&!appleCompleted.current){appleCompleted.current=true;void record("play_complete",undefined,100).then(()=>{if(!appleNextQueued.current)advance.current()})}
+      });
+      removeAppleItemObserver.current?.();
+      removeAppleItemObserver.current=musicKit.observeItem(trackId=>{
+        if(appleSwitching.current)return;
+        const currentState=usePlayer.getState(),next=currentState.next;
+        if(!next||next.track.provider.trackId!==trackId)return;
+        const manuallySkipped=appleManualAdvance.current;appleManualAdvance.current=false;appleNextQueued.current=false;
+        if(!manuallySkipped&&!appleCompleted.current)void record("play_complete",currentState.current,100);
+        sent30.current=false;appleCompleted.current=false;appleClock.current={current:0,duration:(next.track.durationMs||0)/1000,updatedAt:performance.now()};
+        currentState.set({current:next,next:undefined,progress:0,playing:true,error:undefined});
+        void record("impression",next,0);void record("play_start",next,0);
+        void fetchNext(currentState.channel,[next.track.id]).then(async following=>{usePlayer.getState().set({next:following});if(following)appleNextQueued.current=await musicKit.enqueue(following.track.provider.trackId).catch(()=>false)}).catch(()=>undefined);
       });
       const current=await fetchNext();
       if(!current)throw new Error("暂时没有可推荐歌曲，请稍后重试");
@@ -147,7 +164,7 @@ export default function Home(){
     }catch(error){appleMode.current=false;state.set({connected:false,error:error instanceof Error?error.message:"Apple Music 授权失败"})}
     finally{state.set({loading:false})}
   };
-  const changeChannel=async(channel:Channel)=>{if(operationPending.current)return;operationPending.current=true;state.set({channel,loading:true,next:undefined});try{if(channel.id==="chinese"&&!appleMode.current){const imported=await api.discoverChinese(100);if(!imported.count)throw new Error("当前没有找到可用的华语歌曲")}const current=usePlayer.getState().current,item=await fetchNext(channel,current?[current.track.id]:[]);if(item){await playItem(item);state.set({next:await fetchNext(channel,[item.track.id])})}}catch(error){state.set({error:error instanceof Error?error.message:"切台失败"})}finally{operationPending.current=false;state.set({loading:false})}};
+  const changeChannel=async(channel:Channel)=>{if(operationPending.current)return;operationPending.current=true;state.set({channel,loading:true,next:undefined});try{if(channel.id==="chinese"&&!appleMode.current){const imported=await api.discoverChinese(100);if(!imported.count)throw new Error("当前没有找到可用的华语歌曲")}const current=usePlayer.getState().current,item=await fetchNext(channel,current?[current.track.id]:[]);if(item){await playItem(item);const following=await fetchNext(channel,[item.track.id]);state.set({next:following});if(following&&appleMode.current)appleNextQueued.current=await musicKit.enqueue(following.track.provider.trackId).catch(()=>false)}}catch(error){state.set({error:error instanceof Error?error.message:"切台失败"})}finally{operationPending.current=false;state.set({loading:false})}};
   const toggle=async()=>{
     const player=audio.current;if(!player||operationPending.current)return;
     operationPending.current=true;state.set({loading:true});
@@ -155,7 +172,7 @@ export default function Home(){
     try{
       if(appleMode.current){
         if(state.playing){musicKit.pause();state.set({playing:false})}
-        else if(!appleQueued.current&&state.current){await musicKit.play(state.current.track.provider.trackId);appleQueued.current=true;state.set({playing:true});void record("play_start",state.current,0)}
+        else if(!appleQueued.current&&state.current){await musicKit.play(state.current.track.provider.trackId);appleQueued.current=true;if(state.next)appleNextQueued.current=await musicKit.enqueue(state.next.track.provider.trackId).catch(()=>false);state.set({playing:true});void record("play_start",state.current,0)}
         else{await musicKit.resume();state.set({playing:true})}
       }else if(player.paused)await player.play();else player.pause();
     }catch(error){skipUnavailable=error instanceof Error&&error.message.includes("could not be resolved");if(skipUnavailable&&state.current)void record("unavailable",state.current,0);state.set({playing:false,error:skipUnavailable?"这首歌当前地区不可用，正在跳过…":error instanceof Error?error.message:"无法播放此音频，请尝试下一首"})}
