@@ -1,6 +1,6 @@
 from functools import lru_cache
 import uuid
-import jwt
+import httpx
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
@@ -18,15 +18,21 @@ def settings_dependency() -> Settings:
     return get_settings()
 
 
-def get_ccioi_user_id(authorization: str | None = Header(default=None), settings: Settings = Depends(settings_dependency)) -> uuid.UUID:
+async def get_ccioi_user_id(authorization: str | None = Header(default=None), settings: Settings = Depends(settings_dependency)) -> uuid.UUID:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="请先登录 ccioi")
     try:
-        payload = jwt.decode(authorization.removeprefix("Bearer ").strip(), settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-        return uuid.UUID(str(payload["sub"]))
-    except jwt.ExpiredSignatureError as exc:
-        raise HTTPException(status_code=401, detail="登录已过期，请重新登录") from exc
-    except (jwt.InvalidTokenError, KeyError, ValueError) as exc:
+        async with httpx.AsyncClient(timeout=8) as client:
+            response = await client.get(f"{settings.ccioi_api_url.rstrip('/')}/me", headers={"Authorization": authorization})
+        if response.status_code in (401, 403):
+            raise HTTPException(status_code=401, detail="登录已过期，请重新登录")
+        response.raise_for_status()
+        return uuid.UUID(str(response.json()["user"]["id"]))
+    except HTTPException:
+        raise
+    except (httpx.HTTPError, KeyError, ValueError) as exc:
+        if isinstance(exc, httpx.HTTPError):
+            raise HTTPException(status_code=503, detail="暂时无法验证 ccioi 登录状态") from exc
         raise HTTPException(status_code=401, detail="无效的 ccioi 登录凭证") from exc
 
 

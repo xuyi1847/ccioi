@@ -15,9 +15,7 @@ class Settings(BaseSettings):
     apple_private_key_path: str | None = None
     apple_music_storefront: str = "cn"
     apple_music_origin: str = "http://localhost:3000"
-    # Must match ccioi: MHz consumes login tokens and never owns credentials.
-    jwt_secret: str = "ccioi-dev-secret"
-    jwt_algorithm: str = "HS256"
+    ccioi_api_url: str = "https://www.ccioi.com/api"
     cors_origins: str = "http://localhost:3000"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
