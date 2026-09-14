@@ -4,15 +4,17 @@ export type Recommendation={recommendationId:string;track:Track;reason:{type:str
 const API=process.env.NEXT_PUBLIC_API_URL||"http://localhost:8000/api/v1";
 
 async function request<T>(path:string,init?:RequestInit):Promise<T>{
-  const response=await fetch(`${API}${path}`,{...init,headers:{"Content-Type":"application/json",...init?.headers}});
+  const token=typeof window!=="undefined"?localStorage.getItem("ccioi_auth_token"):null;
+  const response=await fetch(`${API}${path}`,{...init,headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{ }),...init?.headers}});
   if(!response.ok){const body=await response.json().catch(()=>({}));throw new Error(body.detail||body.error?.message||`Request failed (${response.status})`)}
   return response.json();
 }
 export const api={
-  anonymous:()=>request<{userId:string}>("/users/anonymous",{method:"POST"}),
+  claimLegacy:(legacyUserId:string)=>request<{migratedEvents:number}>("/users/claim-legacy",{method:"POST",body:JSON.stringify({legacyUserId})}),
   channels:()=>request<Channel[]>("/channels"),
-  next:(userId:string,channelId:string,excludeTrackIds:string[])=>request<Recommendation>("/recommendations/next",{method:"POST",body:JSON.stringify({userId,channelId,excludeTrackIds})}),
+  next:(channelId:string,excludeTrackIds:string[])=>request<Recommendation>("/recommendations/next",{method:"POST",body:JSON.stringify({channelId,excludeTrackIds})}),
   event:(body:Record<string,unknown>)=>request("/events",{method:"POST",body:JSON.stringify(body)}),
+  favorites:()=>request<{trackIds:string[]}>("/events/favorites"),
   appleToken:()=>request<{developerToken:string;storefront:string}>("/apple/developer-token"),
   appleBootstrap:(musicUserToken:string,limit=100)=>request<{count:number;trackIds:string[]}>(`/apple/bootstrap?limit=${limit}`,{method:"POST",headers:{"Music-User-Token":musicUserToken}}),
   search:(query:string)=>request<{count:number;trackIds:string[]}>(`/tracks/search?q=${encodeURIComponent(query)}`),

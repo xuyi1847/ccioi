@@ -8,9 +8,9 @@ function formatTime(milliseconds?:number,progress=0){
   return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,"0")}`;
 }
 
-type Props={item:Recommendation;playing:boolean;progress:number;busy:boolean;frequency:number;channelName:string;onToggle:()=>void;onFavorite:()=>void;onSkip:()=>void;onDislike:()=>void;onExternal:()=>void};
+type Props={item:Recommendation;playing:boolean;progress:number;busy:boolean;liked:boolean;frequency:number;channelName:string;onToggle:()=>void;onFavorite:()=>void;onSkip:()=>void;onDislike:()=>void;onExternal:()=>void};
 
-export function Player({item,playing,progress,busy,frequency,channelName,onToggle,onFavorite,onSkip,onDislike,onExternal}:Props){
+export function Player({item,playing,progress,busy,liked,frequency,channelName,onToggle,onFavorite,onSkip,onDislike,onExternal}:Props){
   const track=item.track;
   const canStream=Boolean(track.streamUrl)||track.playbackType==="musickit";
   return <article className="player-card w-full">
@@ -35,7 +35,7 @@ export function Player({item,playing,progress,busy,frequency,channelName,onToggl
       {!canStream&&<div className="mt-4 flex flex-wrap gap-2">{Object.entries(track.externalLinks||{}).map(([platform,url])=><a key={platform} href={url} target="_blank" rel="noreferrer" onClick={onExternal} className="rounded-full border border-black/15 px-3 py-2 text-xs transition hover:bg-black hover:text-white">{platformNames[platform]||platform} ↗</a>)}</div>}
       <div className="mt-5 grid grid-cols-[44px_1fr_56px_1fr_44px] items-center gap-2">
         <button aria-label="不喜欢" title="不喜欢" disabled={busy} onClick={onDislike} className="control-secondary">×</button>
-        <button aria-label="喜欢" title="喜欢" disabled={busy} onClick={onFavorite} className="control-text">♡ <span>喜欢</span></button>
+        <button aria-label={liked?"取消喜欢":"喜欢"} title={liked?"取消喜欢":"喜欢"} aria-pressed={liked} disabled={busy} onClick={onFavorite} className={`control-text ${liked?"control-favorite-active":""}`}>{liked?"♥":"♡"} <span>{liked?"已喜欢":"喜欢"}</span></button>
         <button aria-label={playing?"暂停":"播放"} disabled={!canStream||busy} onClick={onToggle} className="control-primary">{busy?"…":playing?"Ⅱ":"▶"}</button>
         <button aria-label="下一首" disabled={busy} onClick={onSkip} className="control-text"><span>下一首</span> »</button>
         <div className="h-11 w-11"/>

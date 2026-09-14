@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends
-from app.api.dependencies import get_repository
+from app.api.dependencies import get_ccioi_user, get_repository
+from app.models import User
 from app.repositories.music import MusicRepository
-from app.schemas.api import AnonymousUserOut
+from app.schemas.api import LegacyUserClaimIn
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.post("/anonymous", response_model=AnonymousUserOut, response_model_by_alias=True)
-async def anonymous_user(repo: MusicRepository = Depends(get_repository)) -> AnonymousUserOut:
-    user = await repo.create_anonymous_user()
-    return AnonymousUserOut(userId=user.id)
+@router.post("/claim-legacy")
+async def claim_legacy(payload: LegacyUserClaimIn, user: User = Depends(get_ccioi_user), repo: MusicRepository = Depends(get_repository)) -> dict:
+    return {"migratedEvents": await repo.claim_legacy_user(payload.legacy_user_id, user.id)}

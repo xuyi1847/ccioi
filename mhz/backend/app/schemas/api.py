@@ -5,8 +5,8 @@ from pydantic import BaseModel, Field
 EventType = Literal["impression", "play_start", "play_30s", "play_complete", "external_play", "skip", "dislike", "favorite", "unfavorite", "replay"]
 
 
-class AnonymousUserOut(BaseModel):
-    user_id: uuid.UUID = Field(alias="userId")
+class LegacyUserClaimIn(BaseModel):
+    legacy_user_id: uuid.UUID = Field(alias="legacyUserId")
     model_config = {"populate_by_name": True}
 
 
@@ -20,7 +20,6 @@ class ChannelOut(BaseModel):
 
 
 class EventIn(BaseModel):
-    user_id: uuid.UUID = Field(alias="userId")
     track_id: uuid.UUID = Field(alias="trackId")
     channel_id: str | None = Field(None, alias="channelId")
     recommendation_id: uuid.UUID | None = Field(None, alias="recommendationId")
@@ -33,7 +32,6 @@ class EventIn(BaseModel):
 
 
 class RecommendationIn(BaseModel):
-    user_id: uuid.UUID = Field(alias="userId")
     channel_id: str = Field(alias="channelId")
     exclude_track_ids: list[uuid.UUID] = Field(default_factory=list, alias="excludeTrackIds")
     model_config = {"populate_by_name": True}

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.models import Channel, Track, TrackProvider, User, UserTrackEvent
@@ -11,15 +11,42 @@ class MusicRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def create_anonymous_user(self) -> User:
-        user = User(anonymous_id=uuid.uuid4().hex)
+    async def get_user(self, user_id: uuid.UUID) -> User | None:
+        return await self.session.get(User, user_id)
+
+    async def get_or_create_ccioi_user(self, user_id: uuid.UUID) -> User:
+        user = await self.get_user(user_id)
+        if user:
+            return user
+        user = User(id=user_id, anonymous_id=f"ccioi:{user_id}")
         self.session.add(user)
         await self.session.commit()
         await self.session.refresh(user)
         return user
 
-    async def get_user(self, user_id: uuid.UUID) -> User | None:
-        return await self.session.get(User, user_id)
+    async def favorite_track_ids(self, user_id: uuid.UUID) -> list[uuid.UUID]:
+        rows = await self.session.execute(
+            select(UserTrackEvent.track_id, UserTrackEvent.event_type)
+            .where(UserTrackEvent.user_id == user_id, UserTrackEvent.event_type.in_(("favorite", "unfavorite")))
+            .order_by(UserTrackEvent.created_at.desc(), UserTrackEvent.id.desc())
+        )
+        latest: dict[uuid.UUID, str] = {}
+        for track_id, event_type in rows:
+            latest.setdefault(track_id, event_type)
+        return [track_id for track_id, event_type in latest.items() if event_type == "favorite"]
+
+    async def claim_legacy_user(self, legacy_user_id: uuid.UUID, ccioi_user_id: uuid.UUID) -> int:
+        if legacy_user_id == ccioi_user_id:
+            return 0
+        legacy = await self.get_user(legacy_user_id)
+        if not legacy or legacy.anonymous_id.startswith("ccioi:"):
+            return 0
+        result = await self.session.execute(
+            update(UserTrackEvent).where(UserTrackEvent.user_id == legacy_user_id).values(user_id=ccioi_user_id)
+        )
+        await self.session.execute(delete(User).where(User.id == legacy_user_id))
+        await self.session.commit()
+        return int(result.rowcount or 0)
 
     async def list_channels(self) -> list[Channel]:
         result = await self.session.scalars(select(Channel).where(Channel.active.is_(True)).order_by(Channel.frequency))
