@@ -25,6 +25,7 @@ export default function Home(){
   const appleMode=useRef(false);
   const appleQueued=useRef(false);
   const appleCompleted=useRef(false);
+  const appleSwitching=useRef(false);
   const removeAppleObserver=useRef<(()=>void)|null>(null);
   const removeAppleStateObserver=useRef<(()=>void)|null>(null);
   const operationPending=useRef(false);
@@ -46,18 +47,20 @@ export default function Home(){
   const playItem=useCallback(async(item:Recommendation,autoplay=true)=>{
     const player=audio.current;
     if(!player)throw new Error("播放器尚未初始化");
-    sent30.current=false;
-    appleCompleted.current=false;
-    appleClock.current={current:0,duration:(item.track.durationMs||0)/1000,updatedAt:performance.now()};
-    state.set({current:item,progress:0,error:undefined});
     if(item.track.playbackType==="musickit"){
       player.pause();player.removeAttribute("src");player.load();
       appleQueued.current=false;
       void record("impression",item,0);
-      if(autoplay){await musicKit.play(item.track.provider.trackId);appleQueued.current=true;state.set({playing:true});void record("play_start",item,0)}
-      else state.set({playing:false});
+      if(autoplay){appleSwitching.current=true;try{await musicKit.play(item.track.provider.trackId)}finally{appleSwitching.current=false}appleQueued.current=true}
+      sent30.current=false;appleCompleted.current=false;appleClock.current={current:0,duration:(item.track.durationMs||0)/1000,updatedAt:performance.now()};
+      state.set({current:item,progress:0,error:undefined,playing:autoplay});
+      if(autoplay)void record("play_start",item,0);
       return;
     }
+    sent30.current=false;
+    appleCompleted.current=false;
+    appleClock.current={current:0,duration:(item.track.durationMs||0)/1000,updatedAt:performance.now()};
+    state.set({current:item,progress:0,error:undefined});
     await record("impression",item,0);
     if(!item.track.streamUrl){player.pause();player.removeAttribute("src");player.load();state.set({playing:false});return}
     await record("play_start",item,0);
@@ -100,7 +103,7 @@ export default function Home(){
 
   const toggleFavorite=async()=>{const current=usePlayer.getState().current;if(!current)return;const trackId=current.track.id,removing=favoriteIds.has(trackId);setFavoriteIds(previous=>{const next=new Set(previous);if(removing)next.delete(trackId);else next.add(trackId);return next});if(!await record(removing?"unfavorite":"favorite",current)){setFavoriteIds(previous=>{const next=new Set(previous);if(removing)next.add(trackId);else next.delete(trackId);return next});state.set({error:"喜欢状态保存失败，请重试"})}};
 
-  const connect=async()=>{state.set({loading:true,error:undefined});try{const token=await api.appleToken();await configureMusicKit(token.developerToken);const userToken=await musicKit.authorize();appleMode.current=true;const catalog=await api.appleBootstrap(userToken,150);if(!catalog.count)throw new Error("Apple Music 没有返回可推荐歌曲");removeAppleObserver.current?.();removeAppleStateObserver.current?.();removeAppleObserver.current=musicKit.observeTime((currentTime,duration)=>{if(!duration)return;appleClock.current={current:currentTime,duration,updatedAt:performance.now()};const progress=Math.min(100,currentTime/duration*100);usePlayer.getState().set({progress});if(currentTime>=30&&!sent30.current){sent30.current=true;void record("play_30s")}const current=usePlayer.getState();if(progress>=60&&!current.next&&current.current)void fetchNext(current.channel,[current.current.track.id]).then(next=>current.set({next})).catch(()=>undefined)});removeAppleStateObserver.current=musicKit.observeState((playing,ended)=>{usePlayer.getState().set({playing});if(ended&&!appleCompleted.current){appleCompleted.current=true;void record("play_complete",undefined,100).then(()=>advance.current())}});const current=await fetchNext();if(!current)throw new Error("暂时没有可推荐歌曲，请稍后重试");state.set({connected:true});await playItem(current,false);state.set({next:await fetchNext(state.channel,[current.track.id])})}catch(error){appleMode.current=false;state.set({connected:false,error:error instanceof Error?error.message:"Apple Music 授权失败"})}finally{state.set({loading:false})}};
+  const connect=async()=>{state.set({loading:true,error:undefined});try{const token=await api.appleToken();await configureMusicKit(token.developerToken);const userToken=await musicKit.authorize();appleMode.current=true;const catalog=await api.appleBootstrap(userToken,150);if(!catalog.count)throw new Error("Apple Music 没有返回可推荐歌曲");removeAppleObserver.current?.();removeAppleStateObserver.current?.();removeAppleObserver.current=musicKit.observeTime((currentTime,duration)=>{if(!duration)return;appleClock.current={current:currentTime,duration,updatedAt:performance.now()};const progress=Math.min(100,currentTime/duration*100);usePlayer.getState().set({progress});if(currentTime>=30&&!sent30.current){sent30.current=true;void record("play_30s")}const current=usePlayer.getState();if(progress>=60&&!current.next&&current.current)void fetchNext(current.channel,[current.current.track.id]).then(next=>current.set({next})).catch(()=>undefined)});removeAppleStateObserver.current=musicKit.observeState((playing,ended)=>{if(appleSwitching.current)return;usePlayer.getState().set({playing});if(ended&&!appleCompleted.current){appleCompleted.current=true;void record("play_complete",undefined,100).then(()=>advance.current())}});const current=await fetchNext();if(!current)throw new Error("暂时没有可推荐歌曲，请稍后重试");state.set({connected:true});await playItem(current,false);state.set({next:await fetchNext(state.channel,[current.track.id])})}catch(error){appleMode.current=false;state.set({connected:false,error:error instanceof Error?error.message:"Apple Music 授权失败"})}finally{state.set({loading:false})}};
   const changeChannel=async(channel:Channel)=>{if(operationPending.current)return;operationPending.current=true;state.set({channel,loading:true,next:undefined});try{if(channel.id==="chinese"&&!appleMode.current){const imported=await api.discoverChinese(100);if(!imported.count)throw new Error("当前没有找到可用的华语歌曲")}const current=usePlayer.getState().current,item=await fetchNext(channel,current?[current.track.id]:[]);if(item){await playItem(item);state.set({next:await fetchNext(channel,[item.track.id])})}}catch(error){state.set({error:error instanceof Error?error.message:"切台失败"})}finally{operationPending.current=false;state.set({loading:false})}};
   const toggle=async()=>{const player=audio.current;if(!player||operationPending.current)return;operationPending.current=true;state.set({loading:true});try{if(appleMode.current){if(state.playing){musicKit.pause();state.set({playing:false})}else if(!appleQueued.current&&state.current){await musicKit.play(state.current.track.provider.trackId);appleQueued.current=true;state.set({playing:true});void record("play_start",state.current,0)}else{await musicKit.resume();state.set({playing:true})}}else if(player.paused)await player.play();else player.pause()}catch(error){state.set({playing:false,error:error instanceof Error?error.message:"无法播放此音频，请尝试下一首"})}finally{operationPending.current=false;state.set({loading:false})}};
 
