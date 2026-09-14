@@ -17,8 +17,6 @@ export function Player({item,playing,progress,busy,liked,frequency,channelName,o
   return <article className="player-card w-full">
     <div className="player-art relative aspect-square overflow-hidden bg-[#d8d5cc]">
       {track.artworkUrl?<Image loader={({src})=>src} unoptimized src={track.artworkUrl} alt={`${track.title} artwork`} fill sizes="(max-width: 767px) 88vw, 420px" priority className="object-contain"/>:<div className="display grid h-full place-items-center text-6xl text-black/25">MHz</div>}
-      <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/30 to-transparent"/>
-      <span className="caps absolute bottom-4 left-4 text-white/90">{track.provider.name==="appleMusic"?"Playing with Apple Music":"MHz discovery"}</span>
     </div>
     <div className="flex min-w-0 flex-col px-6 py-6 sm:px-8 sm:py-8">
       <div className="flex items-start justify-between gap-5 border-b border-black/10 pb-5">
