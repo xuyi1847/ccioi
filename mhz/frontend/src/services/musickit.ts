@@ -4,12 +4,12 @@ type MusicItem={id?:string;playParams?:{id?:string;catalogId?:string}};
 type MusicKitInstance={authorize:()=>Promise<string>;unauthorize:()=>Promise<void>;setQueue:(value:{song:string})=>Promise<void>;playLater?:(value:{song:string})=>Promise<void>;play:()=>Promise<void>;pause:()=>void;stop:()=>void;skipToNextItem:()=>Promise<void>;addEventListener:(name:string,listener:PlaybackListener)=>void;removeEventListener:(name:string,listener:PlaybackListener)=>void;currentPlaybackTime:number;currentPlaybackDuration:number;playbackState:number|string;nowPlayingItem?:MusicItem;isAuthorized:boolean};
 let instance:MusicKitInstance|null=null;
 
-function timeout<T>(promise:Promise<T>,message:string):Promise<T>{return Promise.race([promise,new Promise<T>((_,reject)=>window.setTimeout(()=>reject(new Error(message)),8000))])}
+function timeout<T>(promise:Promise<T>,message:string,delay=8000):Promise<T>{return Promise.race([promise,new Promise<T>((_,reject)=>window.setTimeout(()=>reject(new Error(message)),delay))])}
 
 function loadScript():Promise<void>{return new Promise((resolve,reject)=>{if(window.MusicKit)return resolve();const script=document.createElement("script");script.src="https://js-cdn.music.apple.com/musickit/v3/musickit.js";script.onload=()=>resolve();script.onerror=()=>reject(new Error("MusicKit failed to load"));document.head.appendChild(script)})}
 export async function configureMusicKit(developerToken:string){await loadScript();await window.MusicKit!.configure({developerToken,app:{name:"MHz",build:"0.1.0"}});instance=window.MusicKit!.getInstance();return instance}
 export const musicKit={
-  authorize:async()=>{if(!instance)throw new Error("MusicKit is not configured");return instance.authorize()},
+  authorize:async()=>{if(!instance)throw new Error("MusicKit is not configured");return timeout(instance.authorize(),"Apple Music 授权超时，请使用 Safari 打开后重试",20000)},
   unauthorize:async()=>instance?.unauthorize(),
   play:async(trackId:string)=>{if(!instance)throw new Error("MusicKit is not configured");instance.stop();await timeout(instance.setQueue({song:trackId}),"Apple Music 设置播放队列超时");await timeout(instance.play(),"Apple Music 开始播放超时")},
   enqueue:async(trackId:string)=>{if(!instance?.playLater)return false;await timeout(instance.playLater({song:trackId}),"Apple Music 预加载下一首超时");return true},
