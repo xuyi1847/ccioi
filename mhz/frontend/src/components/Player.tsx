@@ -16,7 +16,7 @@ export function Player({item,playing,progress,busy,liked,frequency,channelName,o
   const canStream=Boolean(track.streamUrl)||track.playbackType==="musickit";
   return <article className="player-card w-full">
     <div className="player-art relative aspect-square overflow-hidden bg-[#d8d5cc]">
-      {track.artworkUrl?<Image loader={({src})=>src} unoptimized src={track.artworkUrl} alt={`${track.title} artwork`} fill sizes="(max-width: 767px) 88vw, 420px" priority className="object-cover"/>:<div className="display grid h-full place-items-center text-6xl text-black/25">MHz</div>}
+      {track.artworkUrl?<Image loader={({src})=>src} unoptimized src={track.artworkUrl} alt={`${track.title} artwork`} fill sizes="(max-width: 767px) 88vw, 420px" priority className="object-contain"/>:<div className="display grid h-full place-items-center text-6xl text-black/25">MHz</div>}
       <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/30 to-transparent"/>
       <span className="caps absolute bottom-4 left-4 text-white/90">{track.provider.name==="appleMusic"?"Playing with Apple Music":"MHz discovery"}</span>
     </div>
@@ -38,7 +38,7 @@ export function Player({item,playing,progress,busy,liked,frequency,channelName,o
       <div className="mt-5 grid grid-cols-[44px_1fr_56px_1fr_44px] items-center gap-2">
         <button aria-label="不喜欢" title="不喜欢" disabled={busy} onClick={onDislike} className="control-secondary">×</button>
         <button aria-label={liked?"取消喜欢":"喜欢"} title={liked?"取消喜欢":"喜欢"} aria-pressed={liked} disabled={busy} onClick={onFavorite} className={`control-text ${liked?"control-favorite-active":""}`}>{liked?"♥":"♡"} <span>{liked?"已喜欢":"喜欢"}</span></button>
-        <button aria-label={playing?"暂停":"播放"} disabled={!canStream||busy} onClick={onToggle} className="control-primary">{busy?"…":playing?"Ⅱ":"▶"}</button>
+        <button aria-label={playing?"暂停":"播放"} disabled={!canStream||busy} onClick={onToggle} className="control-primary">{busy?<span aria-hidden="true">…</span>:playing?<svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-current"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>:<svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-current"><path d="M8 5.6v12.8a1 1 0 0 0 1.55.83l9.15-6.4a1 1 0 0 0 0-1.66L9.55 4.77A1 1 0 0 0 8 5.6Z"/></svg>}</button>
         <button aria-label="下一首" disabled={busy} onClick={onSkip} className="control-text"><span>下一首</span> »</button>
         <div className="h-11 w-11"/>
       </div>
