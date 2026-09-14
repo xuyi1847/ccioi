@@ -71,6 +71,17 @@ class RecommendationEngine:
         weights = [max(0.05, item.score - floor + 0.05) ** 1.6 for item in pool]
         return generator.choices(pool, weights=weights, k=1)[0]
 
+    @staticmethod
+    def blend_collaborative(ranked: list[RankedTrack], collaborative_scores: dict[uuid.UUID, float], weight: float = 0.25) -> list[RankedTrack]:
+        if not collaborative_scores:
+            return ranked
+        blended: list[RankedTrack] = []
+        for item in ranked:
+            collaborative = collaborative_scores.get(item.track.id, 0.0)
+            reason = "collaborative" if collaborative >= 0.35 else item.reason
+            blended.append(RankedTrack(item.track, (1 - weight) * item.score + weight * collaborative, reason))
+        return sorted(blended, key=lambda item: item.score, reverse=True)
+
     def fallback(self, candidates: list[Track], forbidden: set[uuid.UUID]) -> Track | None:
         allowed = [track for track in candidates if track.id not in forbidden]
         return max(allowed, key=lambda item: item.popularity, default=None)

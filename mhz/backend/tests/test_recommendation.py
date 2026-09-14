@@ -85,3 +85,11 @@ def test_weighted_choice_returns_top_pool_candidate() -> None:
     selected = RecommendationEngine.choose(ranked, random.Random(7))
     assert selected is not None
     assert selected in ranked[:20]
+
+
+def test_collaborative_score_can_promote_candidate() -> None:
+    first, second = track("A", "One"), track("B", "Two")
+    ranked = RecommendationEngine().rank([first, second], [], channel(), set(), {})
+    blended = RecommendationEngine.blend_collaborative(ranked, {second.id: 1.0}, weight=0.8)
+    assert blended[0].track.id == second.id
+    assert blended[0].reason == "collaborative"

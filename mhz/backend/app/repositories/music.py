@@ -79,6 +79,16 @@ class MusicRepository:
         rows = await self.session.scalars(statement.limit(250))
         return list(rows)
 
+    async def tracks_by_ids(self, track_ids: set[uuid.UUID], provider: str) -> list[Track]:
+        if not track_ids:
+            return []
+        rows = await self.session.scalars(
+            select(Track).join(TrackProvider).options(selectinload(Track.providers)).where(
+                Track.id.in_(track_ids), TrackProvider.provider == provider
+            ).limit(250)
+        )
+        return list(rows)
+
     async def link_user_candidates(self, user_id: uuid.UUID, tracks: list[Track], source: str = "apple") -> None:
         existing = set(await self.session.scalars(select(UserTrackCandidate.track_id).where(UserTrackCandidate.user_id == user_id)))
         additions: list[UserTrackCandidate] = []
@@ -145,3 +155,16 @@ class MusicRepository:
             .group_by(UserTrackEvent.track_id)
         )
         return {track_id: int(count) for track_id, count in rows}
+
+    async def collaborative_events(self, limit: int = 50_000) -> list[UserTrackEvent]:
+        since = datetime.now(timezone.utc) - timedelta(days=180)
+        rows = await self.session.scalars(
+            select(UserTrackEvent)
+            .where(
+                UserTrackEvent.event_type.in_(("favorite", "unfavorite", "replay", "play_complete", "skip", "dislike")),
+                UserTrackEvent.created_at >= since,
+            )
+            .order_by(UserTrackEvent.created_at.desc())
+            .limit(limit)
+        )
+        return list(rows)

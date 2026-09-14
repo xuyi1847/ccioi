@@ -2,7 +2,7 @@ import Image from "next/image";
 import type {Recommendation} from "@/services/api";
 
 const platformNames:Record<string,string>={appleMusic:"Apple Music",qqMusic:"QQ 音乐",netease:"网易云"};
-const reasonNames:Record<string,string>={artist:"符合你的歌手偏好",genre:"符合你的流派偏好",composer:"来自熟悉的创作者",era:"符合你的年代偏好",language:"符合你的语言偏好",discovery:"为你发现的新歌曲",explore:"探索不同的声音",familiar:"来自熟悉的风格"};
+const reasonNames:Record<string,string>={artist:"符合你的歌手偏好",genre:"符合你的流派偏好",composer:"来自熟悉的创作者",era:"符合你的年代偏好",language:"符合你的语言偏好",collaborative:"相似听众也喜欢",discovery:"为你发现的新歌曲",explore:"探索不同的声音",familiar:"来自熟悉的风格"};
 
 function formatTime(milliseconds?:number,progress=0){
   const seconds=Math.max(0,Math.round((milliseconds||0)*progress/100/1000));

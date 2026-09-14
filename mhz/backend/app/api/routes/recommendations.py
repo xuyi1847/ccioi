@@ -6,6 +6,7 @@ from app.core.config import Settings
 from app.repositories.music import MusicRepository
 from app.schemas.api import ProviderOut, ReasonOut, RecommendationIn, RecommendationOut, TrackOut
 from app.services.recommendation import RecommendationEngine
+from app.services.collaborative_filtering import CollaborativeFilteringService
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
 
@@ -15,13 +16,19 @@ async def next_recommendation(payload: RecommendationIn, user: User = Depends(ge
     channel = await repo.get_channel(payload.channel_id)
     if not channel: raise HTTPException(404, "Channel not found")
     history = await repo.recent_events(user.id)
+    collaborative_scores = CollaborativeFilteringService().score_candidates(user.id, history, await repo.collaborative_events())
     provider_name = {"apple": "appleMusic", "audius": "audius", "musicbrainz": "musicbrainz"}.get(settings.music_provider, "mock")
     language = "zh" if channel.id == "chinese" else None
     candidates = await repo.candidate_tracks(user.id, set(payload.exclude_track_ids), provider_name, language)
     if not candidates and language:
         candidates = await repo.candidate_tracks(user.id, set(payload.exclude_track_ids), provider_name)
+    if collaborative_scores:
+        collaborative_tracks = await repo.tracks_by_ids(set(collaborative_scores) - set(payload.exclude_track_ids), provider_name)
+        existing_ids = {track.id for track in candidates}
+        candidates.extend(track for track in collaborative_tracks if track.id not in existing_ids)
     engine = RecommendationEngine()
     ranked = engine.rank(candidates, history, channel, set(payload.exclude_track_ids), await repo.skip_counts(user.id))
+    ranked = engine.blend_collaborative(ranked, collaborative_scores, 0.30 if channel.id in {"discovery", "roam"} else 0.20)
     selected = engine.choose(ranked)
     blocked = {event.track_id for event, _ in history if event.event_type in {"dislike", "unavailable"}}
     track = selected.track if selected else engine.fallback(candidates, set(payload.exclude_track_ids) | blocked)
