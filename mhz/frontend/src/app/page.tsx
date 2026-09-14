@@ -91,7 +91,7 @@ export default function Home(){
     return()=>{player.pause();player.removeAttribute("src");player.load();removeAppleObserver.current?.();removeAppleStateObserver.current?.()};
   },[fetchNext,record]);
 
-  useEffect(()=>{const timer=window.setInterval(()=>{const current=usePlayer.getState();const clock=appleClock.current;if(!appleMode.current||!current.playing||!clock.duration)return;const elapsed=(performance.now()-clock.updatedAt)/1000;current.set({progress:Math.min(99.8,(clock.current+elapsed)/clock.duration*100)})},250);return()=>window.clearInterval(timer)},[]);
+  useEffect(()=>{const timer=window.setInterval(()=>{const current=usePlayer.getState(),clock=appleClock.current;if(!appleMode.current||!current.playing||!clock.duration||appleSwitching.current)return;const elapsed=(performance.now()-clock.updatedAt)/1000,estimatedTime=Math.min(clock.duration,clock.current+elapsed),progress=estimatedTime/clock.duration*100;current.set({progress:Math.min(100,progress)});if(estimatedTime>1&&clock.duration-estimatedTime<=1&&!appleCompleted.current&&!operationPending.current){appleCompleted.current=true;void record("play_complete",undefined,100).then(()=>advance.current())}},250);return()=>window.clearInterval(timer)},[record]);
 
   useEffect(()=>{const next=state.next?.track.artworkUrl;if(!next)return;const image=new window.Image();image.src=next},[state.next]);
 
