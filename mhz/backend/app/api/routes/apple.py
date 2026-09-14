@@ -44,7 +44,18 @@ async def bootstrap_personal_catalog(
             for query in ("周杰伦", "王菲", "Radiohead", "Taylor Swift"):
                 items.extend(await provider.search_tracks(query, 15))
         tracks = await repo.import_provider_tracks(items[:limit], provider.name, settings.apple_music_storefront)
-        return {"count": len(tracks), "trackIds": [str(track.id) for track in tracks]}
+        chinese_items = []
+        for query in ("周杰伦", "王菲", "陈奕迅", "孙燕姿"):
+            try:
+                found = await provider.search_tracks(query, 12)
+                for item in found:
+                    item.metadata["language"] = "zh"
+                chinese_items.extend(found)
+            except Exception:
+                continue
+        chinese_tracks = await repo.import_provider_tracks(chinese_items, provider.name, settings.apple_music_storefront)
+        unique_ids = list(dict.fromkeys(str(track.id) for track in tracks + chinese_tracks))
+        return {"count": len(unique_ids), "trackIds": unique_ids}
     except Exception as exc:
         logger.exception("Apple Music personal catalog bootstrap failed")
         raise HTTPException(502, f"Apple Music personal catalog unavailable: {exc}") from exc
