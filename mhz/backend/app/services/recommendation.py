@@ -25,11 +25,15 @@ class RecommendationEngine:
         skip_counts: dict[uuid.UUID, int],
     ) -> list[RankedTrack]:
         profile = self.taste_service.build(history)
-        disliked = {event.track_id for event, _ in history if event.event_type == "dislike"}
-        recent_tracks = {event.track_id for event, _ in history[:20]}
-        recent_artists = {track.artist_name for _, track in history[:8]}
+        disliked = {event.track_id for event, _ in history if event.event_type in {"dislike", "unavailable"}}
+        plays = [(event, track) for event, track in history if event.event_type == "play_start"]
+        recent_track_list = list(dict.fromkeys(event.track_id for event, _ in plays))[:20]
+        recent_artist_list = list(dict.fromkeys(track.artist_name for _, track in plays))[:8]
+        recent_tracks = set(recent_track_list)
+        recent_artists = set(recent_artist_list)
         seen = {event.track_id for event, _ in history}
         config = channel.config or {}
+        familiar_ratio = float(config.get("familiarRatio", 0.3))
         discovery_ratio = float(config.get("discoveryRatio", 0.5))
         explore_ratio = float(config.get("exploreRatio", 0.2))
         ranked: list[RankedTrack] = []
@@ -40,19 +44,25 @@ class RecommendationEngine:
             genre_affinity = max([profile.genres.get(genre, 0.0) for genre in track.genre or []] or [0.0])
             novelty = 1.0 if track.id not in seen else 0.15
             exploration = random.Random(str(track.id)).random()
-            score = (
-                0.35 * genre_affinity
-                + 0.20 * max(artist_affinity, genre_affinity)
-                + 0.15 * novelty
-                + 0.10 * artist_affinity
-                + 0.10 * discovery_ratio * novelty
-                + 0.10 * explore_ratio * exploration
-            )
+            familiarity = max(0.0, 0.6 * artist_affinity + 0.4 * genre_affinity)
+            discovery = novelty * max(0.15, 0.65 + 0.35 * genre_affinity)
+            score = familiar_ratio * familiarity + discovery_ratio * discovery + explore_ratio * exploration
             if skip_counts.get(track.id, 0) >= 2:
                 score -= 0.75
             reason = "familiar" if artist_affinity > 0.45 else "discovery" if novelty > 0.5 else "explore"
             ranked.append(RankedTrack(track, score, reason))
         return sorted(ranked, key=lambda item: item.score, reverse=True)
+
+    @staticmethod
+    def choose(ranked: list[RankedTrack], rng: random.Random | None = None) -> RankedTrack | None:
+        """Weighted sampling keeps quality high without repeating the same deterministic top result."""
+        pool = ranked[:20]
+        if not pool:
+            return None
+        generator = rng or random.SystemRandom()
+        floor = min(item.score for item in pool)
+        weights = [max(0.05, item.score - floor + 0.05) ** 1.6 for item in pool]
+        return generator.choices(pool, weights=weights, k=1)[0]
 
     def fallback(self, candidates: list[Track], forbidden: set[uuid.UUID]) -> Track | None:
         allowed = [track for track in candidates if track.id not in forbidden]

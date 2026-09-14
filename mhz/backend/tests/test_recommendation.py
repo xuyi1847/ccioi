@@ -1,4 +1,5 @@
 import uuid
+import random
 from app.models import Channel, Track, UserTrackEvent
 from app.services.recommendation import RecommendationEngine
 from app.services.taste_profile import TasteProfileService
@@ -56,3 +57,31 @@ def test_early_skip_has_stronger_negative_weight() -> None:
     item = track("A", "One")
     assert TasteProfileService.event_weight(event(item, "skip", 5, 100)) == -2
     assert TasteProfileService.event_weight(event(item, "skip", 80, 100)) == -1
+
+
+def test_unfavorite_cancels_previous_favorite() -> None:
+    item = track("A", "Favorite Artist")
+    history = [(event(item, "unfavorite"), item), (event(item, "favorite"), item)]
+    profile = TasteProfileService().build(history)
+    assert profile.artists.get("Favorite Artist", 0) == 0
+
+
+def test_impression_does_not_trigger_recent_artist_filter() -> None:
+    heard = track("A", "Same Artist")
+    candidate = track("B", "Same Artist")
+    ranked = RecommendationEngine().rank([candidate], [(event(heard, "impression"), heard)], channel(), set(), {})
+    assert ranked[0].track.id == candidate.id
+
+
+def test_unavailable_track_is_filtered() -> None:
+    unavailable = track("A", "One")
+    ranked = RecommendationEngine().rank([unavailable], [(event(unavailable, "unavailable"), unavailable)], channel(), set(), {})
+    assert ranked == []
+
+
+def test_weighted_choice_returns_top_pool_candidate() -> None:
+    candidates = [track(str(index), str(index)) for index in range(25)]
+    ranked = RecommendationEngine().rank(candidates, [], channel(), set(), {})
+    selected = RecommendationEngine.choose(ranked, random.Random(7))
+    assert selected is not None
+    assert selected in ranked[:20]

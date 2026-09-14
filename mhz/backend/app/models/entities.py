@@ -16,6 +16,16 @@ class User(Base, TimestampMixin):
     anonymous_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
 
 
+class UserTrackCandidate(Base):
+    __tablename__ = "user_track_candidates"
+    __table_args__ = (UniqueConstraint("user_id", "track_id"),)
+    id: Mapped[int] = mapped_column(BIGINT_PK, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    track_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tracks.id", ondelete="CASCADE"), index=True)
+    source: Mapped[str] = mapped_column(String(64), default="apple")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Track(Base, TimestampMixin):
     __tablename__ = "tracks"
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)

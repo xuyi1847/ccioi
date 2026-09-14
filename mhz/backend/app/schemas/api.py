@@ -2,7 +2,7 @@ import uuid
 from typing import Any, Literal
 from pydantic import BaseModel, Field
 
-EventType = Literal["impression", "play_start", "play_30s", "play_complete", "external_play", "skip", "dislike", "favorite", "unfavorite", "replay"]
+EventType = Literal["impression", "play_start", "play_30s", "play_complete", "external_play", "skip", "dislike", "favorite", "unfavorite", "unavailable", "replay"]
 
 
 class LegacyUserClaimIn(BaseModel):

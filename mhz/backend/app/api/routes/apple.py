@@ -1,7 +1,8 @@
 import logging
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from app.api.dependencies import get_apple_token_service, get_repository, settings_dependency
+from app.api.dependencies import get_apple_token_service, get_ccioi_user, get_repository, settings_dependency
+from app.models import User
 from app.core.config import Settings
 from app.repositories.music import MusicRepository
 from app.services.apple_token import AppleDeveloperTokenService
@@ -24,6 +25,7 @@ async def developer_token(service: AppleDeveloperTokenService = Depends(get_appl
 async def bootstrap_personal_catalog(
     limit: int = Query(100, ge=20, le=200),
     music_user_token: str = Header(alias="Music-User-Token"),
+    user: User = Depends(get_ccioi_user),
     repo: MusicRepository = Depends(get_repository),
     settings: Settings = Depends(settings_dependency),
     token_service: AppleDeveloperTokenService = Depends(get_apple_token_service),
@@ -54,6 +56,7 @@ async def bootstrap_personal_catalog(
             except Exception:
                 continue
         chinese_tracks = await repo.import_provider_tracks(chinese_items, provider.name, settings.apple_music_storefront)
+        await repo.link_user_candidates(user.id, tracks + chinese_tracks, "apple-bootstrap")
         unique_ids = list(dict.fromkeys(str(track.id) for track in tracks + chinese_tracks))
         return {"count": len(unique_ids), "trackIds": unique_ids}
     except Exception as exc:

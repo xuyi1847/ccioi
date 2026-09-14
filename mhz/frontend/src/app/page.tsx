@@ -81,7 +81,7 @@ export default function Home(){
         item=item||await fetchNext(current.channel,excluded);
         if(!item)break;
         try{await playItem(item);state.set({next:await fetchNext(current.channel,[item.track.id,...excluded])});return}
-        catch(error){lastError=error;void record("skip",item,0);excluded.push(item.track.id);item=undefined;state.set({next:undefined})}
+        catch(error){lastError=error;void record("unavailable",item,0);excluded.push(item.track.id);item=undefined;state.set({next:undefined})}
       }
       throw lastError||new Error("暂时没有可播放的下一首");
     }
@@ -156,7 +156,7 @@ export default function Home(){
         else if(!appleQueued.current&&state.current){await musicKit.play(state.current.track.provider.trackId);appleQueued.current=true;state.set({playing:true});void record("play_start",state.current,0)}
         else{await musicKit.resume();state.set({playing:true})}
       }else if(player.paused)await player.play();else player.pause();
-    }catch(error){skipUnavailable=error instanceof Error&&error.message.includes("could not be resolved");state.set({playing:false,error:skipUnavailable?"这首歌当前地区不可用，正在跳过…":error instanceof Error?error.message:"无法播放此音频，请尝试下一首"})}
+    }catch(error){skipUnavailable=error instanceof Error&&error.message.includes("could not be resolved");if(skipUnavailable&&state.current)void record("unavailable",state.current,0);state.set({playing:false,error:skipUnavailable?"这首歌当前地区不可用，正在跳过…":error instanceof Error?error.message:"无法播放此音频，请尝试下一首"})}
     finally{operationPending.current=false;state.set({loading:false})}
     if(skipUnavailable)void skip(false);
   };

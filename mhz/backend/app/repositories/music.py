@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import Select, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from app.models import Channel, Track, TrackProvider, User, UserTrackEvent
+from app.models import Channel, Track, TrackProvider, User, UserTrackCandidate, UserTrackEvent
 from app.services.providers.base import ProviderTrack
 
 
@@ -61,8 +61,9 @@ class MusicRepository:
         await self.session.refresh(event)
         return event
 
-    async def candidate_tracks(self, excluded: set[uuid.UUID], provider: str | None = None, language: str | None = None) -> list[Track]:
+    async def candidate_tracks(self, user_id: uuid.UUID, excluded: set[uuid.UUID], provider: str | None = None, language: str | None = None) -> list[Track]:
         statement: Select[tuple[Track]] = select(Track).options(selectinload(Track.providers))
+        statement = statement.join(UserTrackCandidate).where(UserTrackCandidate.user_id == user_id)
         if provider:
             statement = statement.join(TrackProvider).where(TrackProvider.provider == provider)
         if language:
@@ -71,6 +72,17 @@ class MusicRepository:
             statement = statement.where(Track.id.not_in(excluded))
         rows = await self.session.scalars(statement.limit(250))
         return list(rows)
+
+    async def link_user_candidates(self, user_id: uuid.UUID, tracks: list[Track], source: str = "apple") -> None:
+        existing = set(await self.session.scalars(select(UserTrackCandidate.track_id).where(UserTrackCandidate.user_id == user_id)))
+        additions: list[UserTrackCandidate] = []
+        for track in tracks:
+            if track.id in existing:
+                continue
+            existing.add(track.id)
+            additions.append(UserTrackCandidate(user_id=user_id, track_id=track.id, source=source))
+        self.session.add_all(additions)
+        await self.session.commit()
 
     async def import_provider_tracks(self, items: list[ProviderTrack], provider: str, storefront: str) -> list[Track]:
         imported: list[Track] = []

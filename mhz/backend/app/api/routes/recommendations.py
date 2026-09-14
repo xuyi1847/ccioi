@@ -17,13 +17,14 @@ async def next_recommendation(payload: RecommendationIn, user: User = Depends(ge
     history = await repo.recent_events(user.id)
     provider_name = {"apple": "appleMusic", "audius": "audius", "musicbrainz": "musicbrainz"}.get(settings.music_provider, "mock")
     language = "zh" if channel.id == "chinese" else None
-    candidates = await repo.candidate_tracks(set(payload.exclude_track_ids), provider_name, language)
+    candidates = await repo.candidate_tracks(user.id, set(payload.exclude_track_ids), provider_name, language)
     if not candidates and language:
-        candidates = await repo.candidate_tracks(set(payload.exclude_track_ids), provider_name)
+        candidates = await repo.candidate_tracks(user.id, set(payload.exclude_track_ids), provider_name)
     engine = RecommendationEngine()
     ranked = engine.rank(candidates, history, channel, set(payload.exclude_track_ids), await repo.skip_counts(user.id))
-    selected = ranked[0] if ranked else None
-    track = selected.track if selected else engine.fallback(candidates, set(payload.exclude_track_ids))
+    selected = engine.choose(ranked)
+    blocked = {event.track_id for event, _ in history if event.event_type in {"dislike", "unavailable"}}
+    track = selected.track if selected else engine.fallback(candidates, set(payload.exclude_track_ids) | blocked)
     if not track: raise HTTPException(503, "No recommendation is currently available")
     provider = next(item for item in track.providers if item.provider == provider_name)
     recommendation_id = uuid.uuid4()

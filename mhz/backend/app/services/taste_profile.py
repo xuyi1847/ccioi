@@ -25,7 +25,14 @@ class TasteProfileService:
     def build(self, history: list[tuple[UserTrackEvent, Track]]) -> TasteProfile:
         artists: defaultdict[str, float] = defaultdict(float)
         genres: defaultdict[str, float] = defaultdict(float)
+        favorite_state_seen: set[object] = set()
         for event, track in history:
+            if event.event_type in {"favorite", "unfavorite"}:
+                if event.track_id in favorite_state_seen:
+                    continue
+                favorite_state_seen.add(event.track_id)
+                if event.event_type == "unfavorite":
+                    continue
             weight = self.event_weight(event)
             artists[track.artist_name] += weight
             for genre in track.genre or []:
