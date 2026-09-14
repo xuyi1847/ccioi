@@ -74,7 +74,8 @@ export default function Home(){
     usePlayer.getState().set({loading:true});
     const current=usePlayer.getState();
     void record(dislike?"dislike":"skip");
-    try{const item=current.next||await fetchNext(current.channel,current.current?[current.current.track.id]:[]);if(!item)return;await playItem(item);state.set({next:await fetchNext(current.channel,[item.track.id])})}
+    try{const item=current.next||await fetchNext(current.channel,current.current?[current.current.track.id]:[]);if(!item)throw new Error("暂时没有可播放的下一首");await playItem(item);state.set({next:await fetchNext(current.channel,[item.track.id])})}
+    catch(error){state.set({error:error instanceof Error?error.message:"切换下一首失败"})}
     finally{operationPending.current=false;usePlayer.getState().set({loading:false})}
   },[fetchNext,playItem,record,state]);
 
