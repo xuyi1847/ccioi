@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 from app.core.config import Settings
 from app.services.apple_token import AppleDeveloperTokenService
@@ -19,10 +20,22 @@ class AppleMusicProvider(MusicProvider):
         }
         if user_token:
             headers["Music-User-Token"] = user_token
-        async with httpx.AsyncClient(base_url="https://api.music.apple.com", timeout=15) as client:
-            response = await client.get(path, params=params, headers=headers)
-            response.raise_for_status()
-            return response.json()
+        async with httpx.AsyncClient(base_url="https://api.music.apple.com", timeout=httpx.Timeout(20, connect=8)) as client:
+            for attempt in range(3):
+                try:
+                    response = await client.get(path, params=params, headers=headers)
+                    response.raise_for_status()
+                    return response.json()
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code < 500 and exc.response.status_code != 429:
+                        raise
+                    if attempt == 2:
+                        raise
+                except httpx.TransportError:
+                    if attempt == 2:
+                        raise
+                await asyncio.sleep(0.35 * (2 ** attempt))
+        raise RuntimeError("Apple Music request failed")
 
     @staticmethod
     def _map(item: dict) -> ProviderTrack:
@@ -56,7 +69,7 @@ class AppleMusicProvider(MusicProvider):
         for path in paths:
             try:
                 payload = await self._get(path, {"limit": min(limit, 100)}, user_token)
-            except httpx.HTTPStatusError:
+            except httpx.HTTPError:
                 continue
             for item in payload.get("data", []):
                 if item.get("type") not in {"songs", "library-songs"}:
