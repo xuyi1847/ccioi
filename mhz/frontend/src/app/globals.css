@@ -30,7 +30,7 @@ button{font:inherit}.noise{position:fixed;inset:0;pointer-events:none;opacity:.0
   .fm-connected .player-art{width:100%;height:auto;aspect-ratio:1/1}
   .fm-connected .player-card>div:last-child{padding:10px 16px}
   .fm-connected .player-card>div:last-child>div:first-child{display:none}
-  .fm-connected .player-card>div:last-child>div:nth-child(2){min-height:68px;padding-block:8px}
+  .fm-connected .player-card>div:last-child>div:nth-child(2){min-height:68px;flex:none;justify-content:flex-start;padding-block:10px 8px}
   .fm-connected .player-card>div:last-child>div:last-child{margin-top:8px}
   .fm-connected .channel-strip{flex:0 0 auto;padding:8px}
   .fm-connected .channel-strip>div:first-child{margin-bottom:5px}

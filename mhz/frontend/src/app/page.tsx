@@ -10,7 +10,10 @@ import {usePlayer} from "@/stores/player";
 
 const LEGACY_USER_KEY="mhz-user-id-v2";
 const SEED_ARTISTS_KEY="mhz-seed-artists";
+const PLAYBACK_KEY="mhz-apple-playback-v1";
 function savedSeedArtists():string[]{try{return JSON.parse(localStorage.getItem(SEED_ARTISTS_KEY)||"[]")}catch{return []}}
+function savedPlayback():{item:Recommendation;position:number}|null{try{return JSON.parse(localStorage.getItem(PLAYBACK_KEY)||"null")}catch{return null}}
+function savePlayback(item:Recommendation,position:number){localStorage.setItem(PLAYBACK_KEY,JSON.stringify({item,position:Math.max(0,position)}))}
 
 export default function Home(){
   const state=usePlayer();
@@ -36,6 +39,8 @@ export default function Home(){
   const removeAppleStateObserver=useRef<(()=>void)|null>(null);
   const removeAppleItemObserver=useRef<(()=>void)|null>(null);
   const operationPending=useRef(false);
+  const connectAction=useRef<()=>void>(()=>undefined);
+  const autoReconnectDone=useRef(false);
   const appleClock=useRef({current:0,duration:0,updatedAt:0});
 
   const record=useCallback(async(type:string,item?:Recommendation,progress?:number)=>{
@@ -59,9 +64,11 @@ export default function Home(){
       appleQueued.current=false;
       appleNextQueued.current=false;
       void record("impression",item,0);
-      if(autoplay){appleSwitching.current=true;try{await musicKit.play(item.track.provider.trackId)}finally{appleSwitching.current=false}appleQueued.current=true}
-      sent30.current=false;appleCompleted.current=false;appleClock.current={current:0,duration:(item.track.durationMs||0)/1000,updatedAt:performance.now()};
-      state.set({current:item,progress:0,error:undefined,playing:autoplay});
+      const restored=savedPlayback(),position=!autoplay&&restored?.item.track.id===item.track.id?restored.position:0;
+      appleSwitching.current=true;try{if(autoplay)await musicKit.play(item.track.provider.trackId);else await musicKit.prepare(item.track.provider.trackId,position)}finally{appleSwitching.current=false}appleQueued.current=true;
+      sent30.current=false;appleCompleted.current=false;appleClock.current={current:position,duration:(item.track.durationMs||0)/1000,updatedAt:performance.now()};
+      const progress=item.track.durationMs?Math.min(100,position*100000/item.track.durationMs):0;
+      state.set({current:item,progress,error:undefined,playing:autoplay});savePlayback(item,position);
       if(autoplay)void record("play_start",item,0);
       return;
     }
@@ -130,7 +137,7 @@ export default function Home(){
     try{
       if(wechatBrowser)throw new Error("微信内置浏览器无法完成 Apple Music 授权，请点右上角 ···，选择“在 Safari 中打开”");
       if(!musicKit.configured)throw new Error("Apple Music 正在初始化，请稍后再试");
-      const userToken=await musicKit.authorize();
+      const userToken=musicKit.userToken||await musicKit.authorize();
       appleMode.current=true;
       const catalog=await api.appleBootstrap(userToken,150,savedSeedArtists());
       if(!catalog.count)throw new Error("Apple Music 没有返回可推荐歌曲");
@@ -139,7 +146,7 @@ export default function Home(){
         if(!duration||appleSwitching.current)return;
         appleClock.current={current:currentTime,duration,updatedAt:performance.now()};
         const progress=Math.min(100,currentTime/duration*100),current=usePlayer.getState();
-        current.set({progress});
+        current.set({progress});if(current.current)savePlayback(current.current,currentTime);
         if(currentTime>=30&&!sent30.current){sent30.current=true;void record("play_30s")}
         if(progress>=60&&!current.next&&current.current)void fetchNext(current.channel,[current.current.track.id]).then(async next=>{current.set({next});if(next)appleNextQueued.current=await musicKit.enqueue(next.track.provider.trackId).catch(()=>false)}).catch(()=>undefined);
         if(current.playing&&currentTime>1&&(duration-currentTime<=1.25||progress>=99.5)&&!appleCompleted.current){appleCompleted.current=true;void record("play_complete",undefined,100).then(()=>{if(!appleNextQueued.current)advance.current()})}
@@ -161,13 +168,16 @@ export default function Home(){
         void record("impression",next,0);void record("play_start",next,0);
         void fetchNext(currentState.channel,[next.track.id]).then(async following=>{usePlayer.getState().set({next:following});if(following)appleNextQueued.current=await musicKit.enqueue(following.track.provider.trackId).catch(()=>false)}).catch(()=>undefined);
       });
-      const current=await fetchNext();
+      const restored=savedPlayback();
+      const current=restored?.item.track.playbackType==="musickit"?restored.item:await fetchNext();
       if(!current)throw new Error("暂时没有可推荐歌曲，请稍后重试");
       state.set({connected:true});await playItem(current,false);
       state.set({next:await fetchNext(state.channel,[current.track.id])});
     }catch(error){appleMode.current=false;state.set({connected:false,error:error instanceof Error?error.message:"Apple Music 授权失败"})}
     finally{state.set({loading:false})}
   };
+  useEffect(()=>{connectAction.current=connect});
+  useEffect(()=>{if(!authenticated||!musicKitReady||!musicKit.userToken||autoReconnectDone.current)return;autoReconnectDone.current=true;connectAction.current()},[authenticated,musicKitReady]);
   const changeChannel=async(channel:Channel)=>{if(operationPending.current)return;operationPending.current=true;state.set({channel,loading:true,next:undefined});try{if(channel.id==="chinese"&&!appleMode.current){const imported=await api.discoverChinese(100);if(!imported.count)throw new Error("当前没有找到可用的华语歌曲")}const current=usePlayer.getState().current,item=await fetchNext(channel,current?[current.track.id]:[]);if(item){await playItem(item);const following=await fetchNext(channel,[item.track.id]);state.set({next:following});if(following&&appleMode.current)appleNextQueued.current=await musicKit.enqueue(following.track.provider.trackId).catch(()=>false)}}catch(error){state.set({error:error instanceof Error?error.message:"切台失败"})}finally{operationPending.current=false;state.set({loading:false})}};
   const toggle=async()=>{
     const player=audio.current;if(!player||operationPending.current)return;
