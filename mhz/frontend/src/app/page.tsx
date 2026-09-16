@@ -184,7 +184,25 @@ export default function Home(){
     finally{state.set({loading:false})}
   };
   useEffect(()=>{connectAction.current=connect});
-  useEffect(()=>{if(!authenticated||!musicKitReady||!musicKit.userToken||autoReconnectDone.current)return;autoReconnectDone.current=true;connectAction.current()},[authenticated,musicKitReady]);
+  useEffect(()=>{
+    if(!authenticated||!musicKitReady||!musicKit.userToken||autoReconnectDone.current)return;
+    autoReconnectDone.current=true;
+    const restored=savedPlayback();
+    // Show the previous session immediately while Apple catalog validation runs
+    // in the background. This avoids returning authorized users to Connect.
+    if(restored?.item.track.playbackType==="musickit"){
+      const duration=restored.item.track.durationMs||0;
+      usePlayer.getState().set({
+        connected:true,
+        current:restored.item,
+        progress:duration?Math.min(100,restored.position*100000/duration):0,
+        playing:false,
+        loading:true,
+        error:undefined
+      });
+    }
+    connectAction.current();
+  },[authenticated,musicKitReady]);
   const changeChannel=async(channel:Channel)=>{if(operationPending.current)return;operationPending.current=true;state.set({channel,loading:true,next:undefined});try{if(channel.id==="chinese"&&!appleMode.current){const imported=await api.discoverChinese(100);if(!imported.count)throw new Error("当前没有找到可用的华语歌曲")}const current=usePlayer.getState().current,item=await fetchNext(channel,current?[current.track.id]:[]);if(item){await playItem(item);const following=await fetchNext(channel,[item.track.id]);state.set({next:following});if(following&&appleMode.current)appleNextQueued.current=await musicKit.enqueue(following.track.provider.trackId).catch(()=>false)}}catch(error){state.set({error:error instanceof Error?error.message:"切台失败"})}finally{operationPending.current=false;state.set({loading:false})}};
   const toggle=async()=>{
     const player=audio.current;if(!player||operationPending.current)return;
