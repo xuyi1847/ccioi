@@ -3,14 +3,50 @@ type PlaybackListener=()=>void;
 type MusicItem={id?:string;playParams?:{id?:string;catalogId?:string}};
 type MusicKitInstance={authorize:()=>Promise<string>;unauthorize:()=>Promise<void>;setQueue:(value:{song:string})=>Promise<void>;playLater?:(value:{song:string})=>Promise<void>;play:()=>Promise<void>;pause:()=>void;stop:()=>void;seekToTime?:(time:number)=>Promise<void>;skipToNextItem:()=>Promise<void>;addEventListener:(name:string,listener:PlaybackListener)=>void;removeEventListener:(name:string,listener:PlaybackListener)=>void;currentPlaybackTime:number;currentPlaybackDuration:number;playbackState:number|string;nowPlayingItem?:MusicItem;isAuthorized:boolean;musicUserToken?:string};
 let instance:MusicKitInstance|null=null;
+const USER_TOKEN_KEY="mhz-apple-user-token-v1";
+
+function cachedUserToken(){
+  if(typeof window==="undefined")return null;
+  return localStorage.getItem(USER_TOKEN_KEY);
+}
+
+function rememberUserToken(token:string){localStorage.setItem(USER_TOKEN_KEY,token)}
+function forgetUserToken(){localStorage.removeItem(USER_TOKEN_KEY)}
 
 function timeout<T>(promise:Promise<T>,message:string,delay=8000):Promise<T>{return Promise.race([promise,new Promise<T>((_,reject)=>window.setTimeout(()=>reject(new Error(message)),delay))])}
 
+function waitForUserToken(delay=30000):Promise<string>{
+  return new Promise((resolve,reject)=>{
+    const started=Date.now();
+    const timer=window.setInterval(()=>{
+      const token=instance?.musicUserToken;
+      if(token){window.clearInterval(timer);resolve(token)}
+      else if(Date.now()-started>=delay){window.clearInterval(timer);reject(new Error("Apple Music 授权完成后未返回令牌，请刷新后重试"))}
+    },200);
+  });
+}
+
 function loadScript():Promise<void>{return new Promise((resolve,reject)=>{if(window.MusicKit)return resolve();const script=document.createElement("script");script.src="https://js-cdn.music.apple.com/musickit/v3/musickit.js";script.onload=()=>resolve();script.onerror=()=>reject(new Error("MusicKit failed to load"));document.head.appendChild(script)})}
-export async function configureMusicKit(developerToken:string){await loadScript();await window.MusicKit!.configure({developerToken,app:{name:"MHz",build:"0.1.0"}});instance=window.MusicKit!.getInstance();return instance}
+export async function configureMusicKit(developerToken:string){
+  await loadScript();
+  const musicUserToken=cachedUserToken();
+  await window.MusicKit!.configure({developerToken,...(musicUserToken?{musicUserToken}:{}),app:{name:"MHz",build:"0.1.0"}});
+  instance=window.MusicKit!.getInstance();
+  // MusicKit v3 builds do not all restore the configured token consistently.
+  if(musicUserToken&&!instance.musicUserToken)instance.musicUserToken=musicUserToken;
+  return instance;
+}
 export const musicKit={
-  authorize:async()=>{if(!instance)throw new Error("MusicKit is not configured");return timeout(instance.authorize(),"Apple Music 授权超时，请使用 Safari 打开后重试",20000)},
-  unauthorize:async()=>instance?.unauthorize(),
+  authorize:async()=>{
+    if(!instance)throw new Error("MusicKit is not configured");
+    const authorization=instance.authorize().then(token=>token||instance?.musicUserToken||"");
+    const token=await Promise.race([authorization,waitForUserToken()]);
+    if(!token)throw new Error("Apple Music 授权完成后未返回令牌，请刷新后重试");
+    rememberUserToken(token);
+    return token;
+  },
+  unauthorize:async()=>{try{await instance?.unauthorize()}finally{forgetUserToken()}},
+  clearAuthorization:()=>forgetUserToken(),
   play:async(trackId:string)=>{if(!instance)throw new Error("MusicKit is not configured");instance.stop();await timeout(instance.setQueue({song:trackId}),"Apple Music 设置播放队列超时");await timeout(instance.play(),"Apple Music 开始播放超时")},
   prepare:async(trackId:string,position=0)=>{if(!instance)throw new Error("MusicKit is not configured");instance.stop();await timeout(instance.setQueue({song:trackId}),"Apple Music 设置播放队列超时");if(position>0&&instance.seekToTime)await timeout(instance.seekToTime(position),"Apple Music 恢复播放位置超时")},
   seek:async(position:number)=>{if(instance?.seekToTime)await timeout(instance.seekToTime(position),"Apple Music 恢复播放位置超时")},
@@ -23,5 +59,5 @@ export const musicKit={
   observeState:(listener:(playing:boolean,ended:boolean)=>void)=>{if(!instance)throw new Error("MusicKit is not configured");const current=instance;const handler=()=>{const value=current.playbackState;const playing=value===2||value==="playing";const stopped=value===4||value==="stopped";const nearEnd=current.currentPlaybackDuration>0&&current.currentPlaybackTime>=current.currentPlaybackDuration-1.5;const ended=value===5||value===10||value==="ended"||value==="completed"||(stopped&&nearEnd);const settled=playing||ended||value===0||value===3||stopped||value==="none"||value==="paused";if(settled)listener(playing,ended)};current.addEventListener("playbackStateDidChange",handler);return()=>current.removeEventListener("playbackStateDidChange",handler)},
   observeItem:(listener:(trackId:string)=>void)=>{if(!instance)throw new Error("MusicKit is not configured");const current=instance;const handler=()=>{const item=current.nowPlayingItem,id=item?.playParams?.catalogId||item?.playParams?.id||item?.id;if(id)listener(String(id))};current.addEventListener("nowPlayingItemDidChange",handler);return()=>current.removeEventListener("nowPlayingItemDidChange",handler)},
   get configured(){return Boolean(instance)}
-  ,get userToken(){return instance?.isAuthorized?instance.musicUserToken||null:null}
+  ,get userToken(){return instance?.musicUserToken||cachedUserToken()}
 };

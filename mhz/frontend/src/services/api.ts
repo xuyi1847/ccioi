@@ -3,11 +3,12 @@ export type Track={id:string;title:string;artist:string;album?:string;artworkUrl
 export type Recommendation={recommendationId:string;track:Track;reason:{type:string;confidence:number}};
 const API=process.env.NEXT_PUBLIC_API_URL||"http://localhost:8000/api/v1";
 const CCIOI_API=process.env.NEXT_PUBLIC_CCIOI_API_URL||"https://www.ccioi.com/api";
+export class ApiError extends Error{constructor(message:string,public status:number){super(message);this.name="ApiError"}}
 
 async function request<T>(path:string,init?:RequestInit):Promise<T>{
   const token=typeof window!=="undefined"?localStorage.getItem("ccioi_auth_token"):null;
   const response=await fetch(`${API}${path}`,{...init,headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{ }),...init?.headers}});
-  if(!response.ok){const body=await response.json().catch(()=>({}));throw new Error(body.detail||body.error?.message||`Request failed (${response.status})`)}
+  if(!response.ok){const body=await response.json().catch(()=>({}));throw new ApiError(body.detail||body.error?.message||`Request failed (${response.status})`,response.status)}
   return response.json();
 }
 export const api={

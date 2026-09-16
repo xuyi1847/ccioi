@@ -4,7 +4,7 @@ import {useCallback,useEffect,useRef,useState} from "react";
 import {Player} from "@/components/Player";
 import {RadioDial} from "@/components/RadioDial";
 import {StartListeningButton} from "@/components/StartListeningButton";
-import {api,Channel,Recommendation} from "@/services/api";
+import {api,ApiError,Channel,Recommendation} from "@/services/api";
 import {configureMusicKit,musicKit} from "@/services/musickit";
 import {usePlayer} from "@/stores/player";
 
@@ -173,7 +173,14 @@ export default function Home(){
       if(!current)throw new Error("暂时没有可推荐歌曲，请稍后重试");
       state.set({connected:true});await playItem(current,false);
       state.set({next:await fetchNext(state.channel,[current.track.id])});
-    }catch(error){appleMode.current=false;state.set({connected:false,error:error instanceof Error?error.message:"Apple Music 授权失败"})}
+    }catch(error){
+      appleMode.current=false;
+      if(error instanceof ApiError&&(error.status===401||error.status===403)){
+        musicKit.clearAuthorization();
+        autoReconnectDone.current=true;
+        state.set({connected:false,error:"Apple Music 授权已失效，请重新连接"});
+      }else state.set({connected:false,error:error instanceof Error?error.message:"Apple Music 授权失败"});
+    }
     finally{state.set({loading:false})}
   };
   useEffect(()=>{connectAction.current=connect});
