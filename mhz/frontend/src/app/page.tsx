@@ -139,8 +139,7 @@ export default function Home(){
       if(!musicKit.configured)throw new Error("Apple Music 正在初始化，请稍后再试");
       const userToken=musicKit.userToken||await musicKit.authorize();
       appleMode.current=true;
-      const catalog=await api.appleBootstrap(userToken,150,savedSeedArtists());
-      if(!catalog.count)throw new Error("Apple Music 没有返回可推荐歌曲");
+      const catalogPromise=api.appleBootstrap(userToken,150,savedSeedArtists());
       removeAppleObserver.current?.();removeAppleStateObserver.current?.();
       removeAppleObserver.current=musicKit.observeTime((currentTime,duration)=>{
         if(!duration||appleSwitching.current)return;
@@ -165,21 +164,35 @@ export default function Home(){
         if(!manuallySkipped&&!appleCompleted.current)void record("play_complete",currentState.current,100);
         sent30.current=false;appleCompleted.current=false;appleClock.current={current:0,duration:(next.track.durationMs||0)/1000,updatedAt:performance.now()};
         currentState.set({current:next,next:undefined,progress:0,playing:true,error:undefined});
+        savePlayback(next,0);
         void record("impression",next,0);void record("play_start",next,0);
         void fetchNext(currentState.channel,[next.track.id]).then(async following=>{usePlayer.getState().set({next:following});if(following)appleNextQueued.current=await musicKit.enqueue(following.track.provider.trackId).catch(()=>false)}).catch(()=>undefined);
       });
-      const restored=savedPlayback();
-      const current=restored?.item.track.playbackType==="musickit"?restored.item:await fetchNext();
+      const restored=savedPlayback(),restoredItem=restored?.item.track.playbackType==="musickit"?restored.item:undefined;
+      if(restoredItem){
+        state.set({connected:true});
+        await playItem(restoredItem,false);
+        // Playback is ready now; catalog refresh and next-track preparation can
+        // finish without keeping the restored player disabled.
+        state.set({loading:false});
+      }
+      const catalog=await catalogPromise;
+      if(!catalog.count)throw new Error("Apple Music 没有返回可推荐歌曲");
+      const current=restoredItem||await fetchNext();
       if(!current)throw new Error("暂时没有可推荐歌曲，请稍后重试");
-      state.set({connected:true});await playItem(current,false);
-      state.set({next:await fetchNext(state.channel,[current.track.id])});
+      if(!restoredItem){state.set({connected:true});await playItem(current,false)}
+      state.set({next:await fetchNext(usePlayer.getState().channel,[current.track.id])});
     }catch(error){
-      appleMode.current=false;
+      const restoredPlayerReady=usePlayer.getState().connected&&appleMode.current;
       if(error instanceof ApiError&&(error.status===401||error.status===403)){
+        appleMode.current=false;
         musicKit.clearAuthorization();
         autoReconnectDone.current=true;
         state.set({connected:false,error:"Apple Music 授权已失效，请重新连接"});
-      }else state.set({connected:false,error:error instanceof Error?error.message:"Apple Music 授权失败"});
+      }else{
+        if(!restoredPlayerReady)appleMode.current=false;
+        state.set({connected:restoredPlayerReady,error:error instanceof Error?error.message:"Apple Music 授权失败"});
+      }
     }
     finally{state.set({loading:false})}
   };
