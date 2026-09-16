@@ -42,6 +42,7 @@ export default function Home(){
   const connectAction=useRef<()=>void>(()=>undefined);
   const autoReconnectDone=useRef(false);
   const appleClock=useRef({current:0,duration:0,updatedAt:0});
+  const appleRestorePosition=useRef(0);
 
   const record=useCallback(async(type:string,item?:Recommendation,progress?:number)=>{
     const current=usePlayer.getState(),target=item||current.current;
@@ -65,6 +66,7 @@ export default function Home(){
       appleNextQueued.current=false;
       void record("impression",item,0);
       const restored=savedPlayback(),position=!autoplay&&restored?.item.track.id===item.track.id?restored.position:0;
+      appleRestorePosition.current=autoplay?0:position;
       appleSwitching.current=true;try{if(autoplay)await musicKit.play(item.track.provider.trackId);else await musicKit.prepare(item.track.provider.trackId,position)}finally{appleSwitching.current=false}appleQueued.current=true;
       sent30.current=false;appleCompleted.current=false;appleClock.current={current:position,duration:(item.track.durationMs||0)/1000,updatedAt:performance.now()};
       const progress=item.track.durationMs?Math.min(100,position*100000/item.track.durationMs):0;
@@ -143,6 +145,8 @@ export default function Home(){
       removeAppleObserver.current?.();removeAppleStateObserver.current?.();
       removeAppleObserver.current=musicKit.observeTime((currentTime,duration)=>{
         if(!duration||appleSwitching.current)return;
+        if(appleRestorePosition.current>0&&currentTime<Math.max(1,appleRestorePosition.current-2))return;
+        if(appleRestorePosition.current>0)appleRestorePosition.current=0;
         appleClock.current={current:currentTime,duration,updatedAt:performance.now()};
         const progress=Math.min(100,currentTime/duration*100),current=usePlayer.getState();
         current.set({progress});if(current.current)savePlayback(current.current,currentTime);

@@ -3,6 +3,7 @@ type PlaybackListener=()=>void;
 type MusicItem={id?:string;playParams?:{id?:string;catalogId?:string}};
 type MusicKitInstance={authorize:()=>Promise<string>;unauthorize:()=>Promise<void>;setQueue:(value:{song:string})=>Promise<void>;playLater?:(value:{song:string})=>Promise<void>;play:()=>Promise<void>;pause:()=>void;stop:()=>void;seekToTime?:(time:number)=>Promise<void>;skipToNextItem:()=>Promise<void>;addEventListener:(name:string,listener:PlaybackListener)=>void;removeEventListener:(name:string,listener:PlaybackListener)=>void;currentPlaybackTime:number;currentPlaybackDuration:number;playbackState:number|string;nowPlayingItem?:MusicItem;isAuthorized:boolean;musicUserToken?:string};
 let instance:MusicKitInstance|null=null;
+let pendingSeekTime=0;
 const USER_TOKEN_KEY="mhz-apple-user-token-v1";
 
 function cachedUserToken(){
@@ -47,11 +48,11 @@ export const musicKit={
   },
   unauthorize:async()=>{try{await instance?.unauthorize()}finally{forgetUserToken()}},
   clearAuthorization:()=>forgetUserToken(),
-  play:async(trackId:string)=>{if(!instance)throw new Error("MusicKit is not configured");instance.stop();await timeout(instance.setQueue({song:trackId}),"Apple Music 设置播放队列超时");await timeout(instance.play(),"Apple Music 开始播放超时")},
-  prepare:async(trackId:string,position=0)=>{if(!instance)throw new Error("MusicKit is not configured");instance.stop();await timeout(instance.setQueue({song:trackId}),"Apple Music 设置播放队列超时");if(position>0&&instance.seekToTime)await timeout(instance.seekToTime(position),"Apple Music 恢复播放位置超时")},
+  play:async(trackId:string)=>{if(!instance)throw new Error("MusicKit is not configured");pendingSeekTime=0;instance.stop();await timeout(instance.setQueue({song:trackId}),"Apple Music 设置播放队列超时");await timeout(instance.play(),"Apple Music 开始播放超时")},
+  prepare:async(trackId:string,position=0)=>{if(!instance)throw new Error("MusicKit is not configured");pendingSeekTime=Math.max(0,position);instance.stop();await timeout(instance.setQueue({song:trackId}),"Apple Music 设置播放队列超时")},
   seek:async(position:number)=>{if(instance?.seekToTime)await timeout(instance.seekToTime(position),"Apple Music 恢复播放位置超时")},
   enqueue:async(trackId:string)=>{if(!instance?.playLater)return false;await timeout(instance.playLater({song:trackId}),"Apple Music 预加载下一首超时");return true},
-  resume:async()=>{if(!instance)throw new Error("MusicKit is not configured");await timeout(instance.play(),"Apple Music 恢复播放超时")},
+  resume:async()=>{if(!instance)throw new Error("MusicKit is not configured");await timeout(instance.play(),"Apple Music 恢复播放超时");if(pendingSeekTime>0&&instance.seekToTime){const target=pendingSeekTime;pendingSeekTime=0;await timeout(instance.seekToTime(target),"Apple Music 恢复播放位置超时")}},
   pause:()=>instance?.pause(),
   stop:()=>instance?.stop(),
   skip:async()=>instance?.skipToNextItem(),
