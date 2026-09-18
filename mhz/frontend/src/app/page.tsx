@@ -14,6 +14,8 @@ const PLAYBACK_KEY="mhz-apple-playback-v1";
 function savedSeedArtists():string[]{try{return JSON.parse(localStorage.getItem(SEED_ARTISTS_KEY)||"[]")}catch{return []}}
 function savedPlayback():{item:Recommendation;position:number}|null{try{return JSON.parse(localStorage.getItem(PLAYBACK_KEY)||"null")}catch{return null}}
 function savePlayback(item:Recommendation,position:number){localStorage.setItem(PLAYBACK_KEY,JSON.stringify({item,position:Math.max(0,position)}))}
+type LocalAccount={email?:string;name?:string;username?:string;firstName?:string;lastName?:string};
+function savedAccount():LocalAccount{try{return JSON.parse(localStorage.getItem("ccioi_current_user_data")||"{}")}catch{return {}}}
 
 export default function Home(){
   const state=usePlayer();
@@ -26,6 +28,8 @@ export default function Home(){
   const [loginError,setLoginError]=useState("");
   const [wechatBrowser,setWechatBrowser]=useState(false);
   const [musicKitReady,setMusicKitReady]=useState(false);
+  const [profileOpen,setProfileOpen]=useState(false);
+  const [account,setAccount]=useState<LocalAccount>({});
   const audio=useRef<HTMLAudioElement|null>(null);
   const sent30=useRef(false);
   const advance=useRef<()=>void>(()=>undefined);
@@ -124,7 +128,7 @@ export default function Home(){
 
   useEffect(()=>{const next=state.next?.track.artworkUrl;if(!next)return;const image=new window.Image();image.src=next},[state.next]);
 
-  const initializeUser=useCallback(async()=>{const legacyUserId=localStorage.getItem(LEGACY_USER_KEY);if(legacyUserId){await api.claimLegacy(legacyUserId);localStorage.removeItem(LEGACY_USER_KEY)}const [channels,favorites]=await Promise.all([api.channels(),api.favorites()]);setFavoriteIds(new Set(favorites.trackIds));usePlayer.getState().set({channels,channel:channels[0]});setAuthenticated(true)},[]);
+  const initializeUser=useCallback(async()=>{const legacyUserId=localStorage.getItem(LEGACY_USER_KEY);if(legacyUserId){await api.claimLegacy(legacyUserId);localStorage.removeItem(LEGACY_USER_KEY)}const [channels,favorites]=await Promise.all([api.channels(),api.favorites()]);setFavoriteIds(new Set(favorites.trackIds));setAccount(savedAccount());usePlayer.getState().set({channels,channel:channels[0]});setAuthenticated(true)},[]);
 
   useEffect(()=>{const browserTimer=window.setTimeout(()=>setWechatBrowser(/MicroMessenger/i.test(navigator.userAgent)),0);void(async()=>{try{if(!localStorage.getItem("ccioi_auth_token")){setAuthenticated(false);return}await initializeUser()}catch(error){localStorage.removeItem("ccioi_auth_token");setAuthenticated(false);usePlayer.getState().set({error:error instanceof Error?error.message:"MHz 无法启动"})}})();return()=>window.clearTimeout(browserTimer)},[initializeUser]);
 
@@ -236,9 +240,28 @@ export default function Home(){
     if(skipUnavailable)void skip(false);
   };
 
-  return <main className={`fm-shell relative flex min-h-[100svh] flex-col items-center px-4 py-5 sm:px-8 sm:py-8 ${authenticated?"fm-authenticated":""} ${state.connected?"fm-connected":""}`}><div className="noise"/><header className="z-10 flex w-full max-w-5xl items-center justify-between border-b border-black/10 pb-4"><div className="display text-2xl font-bold">MHz</div><div className="caps whitespace-nowrap text-[var(--muted)]"><span className="hidden sm:inline">Personal radio · </span>Apple Music</div></header>
+  const logout=async()=>{
+    audio.current?.pause();
+    musicKit.stop();
+    await musicKit.unauthorize().catch(()=>musicKit.clearAuthorization());
+    localStorage.removeItem("ccioi_auth_token");
+    localStorage.removeItem("ccioi_current_user_data");
+    localStorage.removeItem(PLAYBACK_KEY);
+    appleMode.current=false;appleQueued.current=false;appleNextQueued.current=false;autoReconnectDone.current=false;
+    removeAppleObserver.current?.();removeAppleStateObserver.current?.();removeAppleItemObserver.current?.();
+    removeAppleObserver.current=null;removeAppleStateObserver.current=null;removeAppleItemObserver.current=null;
+    setFavoriteIds(new Set());setAccount({});setProfileOpen(false);setAuthenticated(false);
+    usePlayer.getState().set({channels:[],channel:undefined,current:undefined,next:undefined,playing:false,progress:0,connected:false,loading:false,error:undefined});
+  };
+
+  const accountName=account.name||account.username||[account.firstName,account.lastName].filter(Boolean).join(" ")||account.email||"ccioi 用户";
+  const accountInitial=accountName.trim().charAt(0).toUpperCase()||"M";
+
+  return <main className={`fm-shell relative flex min-h-[100svh] flex-col items-center px-4 py-5 sm:px-8 sm:py-8 ${authenticated?"fm-authenticated":""} ${state.connected?"fm-connected":""}`}><div className="noise"/><header className="z-10 flex w-full max-w-5xl items-center justify-between border-b border-black/10 pb-4"><div className="display text-2xl font-bold">MHz</div><div className="flex items-center gap-3"><div className="caps whitespace-nowrap text-[var(--muted)]"><span className="hidden sm:inline">Personal radio · </span>Apple Music</div>{authenticated&&<button type="button" onClick={()=>setProfileOpen(true)} className="grid h-9 w-9 place-items-center rounded-full border border-black/15 bg-white/50 text-xs font-semibold" aria-label="个人中心">{accountInitial}</button>}</div></header>
     {!authenticated?<section className="z-10 flex w-full flex-1 flex-col items-center justify-center pb-12 text-center"><div className="display text-[clamp(64px,16vw,140px)] leading-none">87.5</div><h1 className="mt-8 text-2xl sm:text-4xl">登录 ccioi，开始收听</h1><p className="mt-3 text-sm text-[var(--muted)]">你的喜好和收听记录会同步到同一个账号</p><form onSubmit={login} className="mt-8 flex w-full max-w-sm flex-col gap-3 text-left"><label className="text-xs text-[var(--muted)]">邮箱<input type="email" autoComplete="email" required value={email} onChange={event=>setEmail(event.target.value)} className="mt-1.5 h-12 w-full rounded-xl border border-black/15 bg-white/70 px-4 text-base text-[var(--ink)] outline-none focus:border-black" placeholder="name@example.com"/></label><label className="text-xs text-[var(--muted)]">密码<span className="relative mt-1.5 block"><input type={showPassword?"text":"password"} autoComplete="current-password" required value={password} onChange={event=>setPassword(event.target.value)} className="h-12 w-full rounded-xl border border-black/15 bg-white/70 px-4 pr-14 text-base text-[var(--ink)] outline-none focus:border-black" placeholder="输入密码"/><button type="button" onClick={()=>setShowPassword(value=>!value)} className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-lg text-[var(--muted)]" aria-label={showPassword?"隐藏密码":"显示密码"} title={showPassword?"隐藏密码":"显示密码"}>{showPassword?"◉":"◎"}</button></span></label>{loginError&&<p className="text-center text-sm text-[var(--red)]">{loginError}</p>}<button type="submit" disabled={loginBusy} className="mt-2 h-12 rounded-full bg-black text-sm text-white disabled:opacity-50">{loginBusy?"登录中…":"登录并进入 MHz"}</button></form></section>:!state.connected?<section className="z-10 flex flex-1 flex-col items-center justify-center pb-20 text-center"><div className="display text-[clamp(72px,18vw,170px)] leading-none">87.5</div><p className="caps mt-3 text-[var(--muted)]">Signal found</p><h1 className="mt-12 max-w-lg text-2xl font-normal sm:text-4xl">不是播放你喜欢的歌，<br/>而是找到你的下一首喜欢。</h1><div className="mt-10"><StartListeningButton busy={state.loading} ready={musicKitReady&&!wechatBrowser} onStart={connect}/></div><p className={`mt-4 max-w-sm text-xs ${wechatBrowser?"text-[var(--red)]":"text-[var(--muted)]"}`}>{wechatBrowser?"微信内置浏览器不支持 Apple Music 授权，请点右上角 ···，选择“在 Safari 中打开”":"使用你自己的 Apple Music 订阅授权播放"}</p></section>:
     <section className="z-10 flex w-full max-w-5xl flex-1 flex-col justify-center gap-5 py-5 sm:gap-7 sm:py-8">{state.current?<Player item={state.current} playing={state.playing} progress={state.progress} busy={state.loading} liked={favoriteIds.has(state.current.track.id)} frequency={Number(state.channel?.frequency||87.5)} channelName={state.channel?.name||"私人兆赫"} onToggle={()=>void toggle()} onFavorite={toggleFavorite} onSkip={()=>void skip()} onDislike={()=>void skip(true)} onExternal={()=>void record("external_play")}/>:<div className="pulse caps text-center">Tuning signal…</div>}<RadioDial channels={state.channels} current={state.channel} busy={state.loading} onSelect={changeChannel}/></section>}
+    {authenticated&&state.connected&&<button type="button" onClick={()=>setProfileOpen(true)} className="account-mobile fixed right-3 top-3 z-20 grid h-9 w-9 place-items-center rounded-full border border-black/10 bg-white/85 text-xs font-semibold shadow-sm backdrop-blur sm:hidden" aria-label="个人中心">{accountInitial}</button>}
+    {profileOpen&&<div className="fixed inset-0 z-50 flex items-end justify-center bg-black/25 p-0 backdrop-blur-[2px] sm:items-center sm:p-6" onMouseDown={event=>{if(event.target===event.currentTarget)setProfileOpen(false)}}><section role="dialog" aria-modal="true" aria-label="个人中心" className="w-full rounded-t-[28px] bg-[var(--paper)] p-6 shadow-2xl sm:max-w-md sm:rounded-[28px] sm:p-8"><div className="flex items-start justify-between"><div><p className="caps text-[var(--muted)]">Personal center</p><h2 className="mt-2 text-2xl font-medium">个人中心</h2></div><button type="button" onClick={()=>setProfileOpen(false)} className="grid h-10 w-10 place-items-center rounded-full border border-black/10 text-xl text-[var(--muted)]" aria-label="关闭">×</button></div><div className="mt-7 flex items-center gap-4 rounded-2xl border border-black/10 bg-white/45 p-4"><div className="grid h-12 w-12 flex-none place-items-center rounded-full bg-black text-sm font-semibold text-white">{accountInitial}</div><div className="min-w-0"><p className="truncate font-medium">{accountName}</p>{account.email&&accountName!==account.email&&<p className="mt-1 truncate text-xs text-[var(--muted)]">{account.email}</p>}</div></div><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-2xl border border-black/10 bg-white/35 p-4"><p className="text-2xl font-medium tabular-nums">{favoriteIds.size}</p><p className="mt-1 text-xs text-[var(--muted)]">喜欢的歌曲</p></div><div className="rounded-2xl border border-black/10 bg-white/35 p-4"><p className={`text-sm font-medium ${state.connected?"text-green-700":"text-[var(--muted)]"}`}>{state.connected?"已连接":"未连接"}</p><p className="mt-2 text-xs text-[var(--muted)]">Apple Music</p></div></div><p className="mt-5 text-xs leading-5 text-[var(--muted)]">收听记录和喜欢保存在 ccioi 账号中。退出登录不会删除这些数据。</p><button type="button" onClick={()=>void logout()} className="mt-7 h-12 w-full rounded-full border border-[var(--red)]/30 text-sm font-medium text-[var(--red)] transition hover:bg-[var(--red)] hover:text-white">退出登录</button></section></div>}
     {state.error&&<div className="fixed bottom-5 z-20 max-w-[90vw] rounded-full bg-black px-5 py-3 text-center text-xs text-white">{state.error}</div>}
   </main>;
 }
