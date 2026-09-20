@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import {useState} from "react";
+import {useEffect,useRef,useState} from "react";
 import type {Recommendation} from "@/services/api";
 
 const platformNames:Record<string,string>={appleMusic:"Apple Music",qqMusic:"QQ 音乐",netease:"网易云"};
@@ -16,6 +16,15 @@ type Props={item:Recommendation;playing:boolean;progress:number;busy:boolean;lik
 
 export function Player({item,playing,progress,busy,liked,frequency,channelName,volume,onVolumeChange,onToggleMute,onToggle,onFavorite,onSkip,onDislike,onExternal}:Props){
   const [volumeOpen,setVolumeOpen]=useState(false);
+  const volumeControl=useRef<HTMLDivElement|null>(null);
+  useEffect(()=>{
+    if(!volumeOpen)return;
+    const close=(event:PointerEvent)=>{if(!volumeControl.current?.contains(event.target as Node))setVolumeOpen(false)};
+    const escape=(event:KeyboardEvent)=>{if(event.key==="Escape")setVolumeOpen(false)};
+    document.addEventListener("pointerdown",close);
+    document.addEventListener("keydown",escape);
+    return()=>{document.removeEventListener("pointerdown",close);document.removeEventListener("keydown",escape)};
+  },[volumeOpen]);
   const track=item.track;
   const canStream=Boolean(track.streamUrl)||track.playbackType==="musickit";
   return <article className="player-card w-full">
@@ -42,14 +51,15 @@ export function Player({item,playing,progress,busy,liked,frequency,channelName,v
         <button aria-label={liked?"取消喜欢":"喜欢"} title={liked?"取消喜欢":"喜欢"} aria-pressed={liked} disabled={busy} onClick={onFavorite} className={`control-text ${liked?"control-favorite-active":""}`}><svg aria-hidden="true" viewBox="0 0 24 24" className={`control-icon ${liked?"fill-current":"fill-none stroke-current"}`} strokeWidth="1.8"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z" strokeLinecap="round" strokeLinejoin="round"/></svg><span>{liked?"已喜欢":"喜欢"}</span></button>
         <button aria-label={playing?"暂停":"播放"} disabled={!canStream||busy} onClick={onToggle} className="control-primary">{busy?<span aria-hidden="true">…</span>:playing?<svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-current"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>:<svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-current"><path d="M8 5.6v12.8a1 1 0 0 0 1.55.83l9.15-6.4a1 1 0 0 0 0-1.66L9.55 4.77A1 1 0 0 0 8 5.6Z"/></svg>}</button>
         <button aria-label="下一首" title="下一首" disabled={busy} onClick={onSkip} className="control-text"><span>下一首</span><svg aria-hidden="true" viewBox="0 0 24 24" className="control-icon fill-current"><path d="M6.7 5.6v12.8a1 1 0 0 0 1.55.83l8.2-6.4a1 1 0 0 0 0-1.66l-8.2-6.4A1 1 0 0 0 6.7 5.6Z"/><rect x="18" y="5" width="2" height="14" rx="1"/></svg></button>
-        <div className="group relative flex h-11 w-11 items-center justify-center" onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null))setVolumeOpen(false)}}>
+        <div ref={volumeControl} className="relative flex h-11 w-11 items-center justify-center">
           <button type="button" aria-label="调整音量" title="调整音量" aria-expanded={volumeOpen} onClick={()=>setVolumeOpen(open=>!open)} className="control-secondary">
             {volume===0?<svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5 6.5 9H3v6h3.5L11 19V5Z"/><path d="m16 9 5 6m0-6-5 6"/></svg>:<svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5 6.5 9H3v6h3.5L11 19V5Z"/>{volume>.35&&<path d="M15 9.5a4 4 0 0 1 0 5"/>}{volume>.7&&<path d="M18 7a7.5 7.5 0 0 1 0 10"/>}</svg>}
           </button>
-          <div className={`${volumeOpen?"visible translate-y-0 opacity-100":"invisible translate-y-1 opacity-0"} absolute bottom-full right-0 z-20 w-40 rounded-2xl border border-black/10 bg-[var(--paper)] p-4 shadow-xl transition group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100`}>
-            <div className="mb-3 flex items-center justify-between"><label className="caps text-[var(--muted)]">音量 {Math.round(volume*100)}%</label><button type="button" onClick={onToggleMute} className="text-[10px] text-[var(--red)]">{volume===0?"恢复":"静音"}</button></div>
-            <input aria-label="音量" type="range" min="0" max="1" step="0.01" value={volume} onChange={event=>onVolumeChange(Number(event.target.value))} className="volume-slider block w-full accent-[var(--red)]"/>
-          </div>
+          {volumeOpen&&<div className="absolute bottom-[calc(100%+8px)] right-0 z-20 flex w-44 items-center gap-2 rounded-full border border-black/10 bg-[#f8f7f2]/95 px-3 py-2 shadow-[0_10px_32px_rgba(32,35,31,.16)] backdrop-blur">
+            <button type="button" onClick={onToggleMute} className="grid h-6 w-6 flex-none place-items-center rounded-full text-[var(--muted)] transition hover:bg-black/5 hover:text-[var(--ink)]" aria-label={volume===0?"恢复音量":"静音"}><svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M11 6 7 9.5H4v5h3L11 18V6Z"/>{volume===0?<path d="m16 10 4 4m0-4-4 4"/>:<path d="M15 9.5a4 4 0 0 1 0 5"/>}</svg></button>
+            <input aria-label="音量" type="range" min="0" max="1" step="0.01" value={volume} onChange={event=>onVolumeChange(Number(event.target.value))} className="volume-slider min-w-0 flex-1 accent-[var(--red)]"/>
+            <span className="w-7 flex-none text-right text-[9px] tabular-nums text-[var(--muted)]">{Math.round(volume*100)}</span>
+          </div>}
         </div>
       </div>
     </div>
