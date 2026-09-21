@@ -57,6 +57,14 @@ class AppleMusicProvider(MusicProvider):
     async def get_similar_candidates(self, track: ProviderTrack, limit: int = 100) -> list[ProviderTrack]:
         return await self.search_tracks(track.artist, limit)
 
+    async def get_chart_tracks(self, limit: int = 50) -> list[ProviderTrack]:
+        data = await self._get(
+            f"/v1/catalog/{self.settings.apple_music_storefront}/charts",
+            {"types": "songs", "limit": min(limit, 100)},
+        )
+        charts = data.get("results", {}).get("songs", [])
+        return [self._map(item) for chart in charts for item in chart.get("data", [])][:limit]
+
     async def get_personal_candidates(self, user_token: str, limit: int = 100) -> list[ProviderTrack]:
         """Build a private candidate set without persisting the Music User Token."""
         paths = (

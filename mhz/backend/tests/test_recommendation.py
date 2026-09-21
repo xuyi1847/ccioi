@@ -17,6 +17,10 @@ def channel() -> Channel:
     return Channel(id="private", frequency=87.5, name="私人兆赫", channel_type="personal", config={"discoveryRatio": .65, "exploreRatio": .2})
 
 
+def named_channel(channel_id: str, familiar: float, discovery: float, explore: float) -> Channel:
+    return Channel(id=channel_id, frequency=94.2, name=channel_id, channel_type=channel_id, config={"familiarRatio": familiar, "discoveryRatio": discovery, "exploreRatio": explore})
+
+
 def test_favorite_increases_artist_affinity() -> None:
     liked = track("A", "Favorite Artist")
     profile = TasteProfileService().build([(event(liked, "favorite"), liked)])
@@ -93,3 +97,22 @@ def test_collaborative_score_can_promote_candidate() -> None:
     blended = RecommendationEngine.blend_collaborative(ranked, {second.id: 1.0}, weight=0.8)
     assert blended[0].track.id == second.id
     assert blended[0].reason == "collaborative"
+
+
+def test_impression_is_less_novel_but_not_treated_as_heard() -> None:
+    exposed = track("A", "One")
+    fresh = track("B", "Two")
+    ranked = RecommendationEngine().rank([exposed, fresh], [(event(exposed, "impression"), exposed)], named_channel("discovery", .05, .8, .15), set(), {})
+    assert ranked[0].track.id == fresh.id
+
+
+def test_familiar_channel_boosts_previously_heard_track() -> None:
+    heard = track("A", "Known Artist")
+    # Put enough intervening plays between the known track and now so it is no
+    # longer inside the familiar channel's recent-track/artist windows.
+    history = [(event(track(str(index), f"Artist {index}"), "play_start"), track(str(index), f"Other {index}")) for index in range(12)]
+    history.append((event(heard, "play_complete", 100, 100), heard))
+    fresh = track("B", "New Artist")
+    ranked = RecommendationEngine().rank([heard, fresh], history, named_channel("familiar", .6, .3, .1), set(), {})
+    assert ranked[0].track.id == heard.id
+    assert ranked[0].reason == "familiar"

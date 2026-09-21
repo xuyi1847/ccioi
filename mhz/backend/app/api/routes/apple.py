@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -43,15 +44,23 @@ async def bootstrap_personal_catalog(
             requested_seeds + [track.artist_name for track in favorites if track.artist_name]
             + [item.artist for item in items if item.artist != "Unknown"]
         ))[:8]
-        for query in seed_artists:
-            try:
-                items.extend(await provider.search_tracks(query, 12))
-            except Exception:
-                continue
+        searches = await asyncio.gather(
+            *(provider.search_tracks(query, 18) for query in seed_artists),
+            return_exceptions=True,
+        )
+        discovered = [item for result in searches if isinstance(result, list) for item in result]
+        try:
+            discovered.extend(await provider.get_chart_tracks(60))
+        except Exception:
+            pass
         if not items:
             for query in ("周杰伦", "王菲", "Radiohead", "Taylor Swift"):
-                items.extend(await provider.search_tracks(query, 15))
-        tracks = await repo.import_provider_tracks(items[:limit], provider.name, settings.apple_music_storefront)
+                discovered.extend(await provider.search_tracks(query, 15))
+        # Keep personal, taste-derived and chart candidates together. Previously
+        # items[:limit] silently discarded every discovered song when a library
+        # already filled the personal limit.
+        combined = list({item.provider_id: item for item in [*items, *discovered]}.values())[:500]
+        tracks = await repo.import_provider_tracks(combined, provider.name, settings.apple_music_storefront)
         chinese_items = []
         for query in ("周杰伦", "王菲", "陈奕迅", "孙燕姿"):
             try:

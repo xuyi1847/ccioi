@@ -76,7 +76,7 @@ class MusicRepository:
             statement = statement.where(Track.metadata_json["language"].as_string() == language)
         if excluded:
             statement = statement.where(Track.id.not_in(excluded))
-        rows = await self.session.scalars(statement.limit(250))
+        rows = await self.session.scalars(statement.limit(1000))
         return list(rows)
 
     async def tracks_by_ids(self, track_ids: set[uuid.UUID], provider: str) -> list[Track]:
